@@ -138,11 +138,11 @@ minimum of 3 leaves one creative line. Station facts count **paragraphs after th
 
 | Kind | Minimum | Maximum |
 |---|---|---|
-| SystemGreeting: 3-6 | 3 | 6 |
-| StationGreeting: 4-8 | 4 | 8 |
-| StationChatter: 6-12 | 6 | 12 |
-| SystemBroadcast: 8-16 | 8 | 16 |
-| StationFact: 1-3 paragraphs | 1 | 3 |
+| SystemGreeting | 3 | 6 |
+| StationGreeting | 4 | 8 |
+| StationChatter | 6 | 12 |
+| SystemBroadcast | 8 | 16 |
+| StationFact | 1 | 3 |
 
 Meet the minimum for every tag; below the minimum is an error. Exceeding the
 maximum is a warning: volume is a taste question, not a correctness one.
@@ -152,7 +152,7 @@ A system overrides only the kinds it cares about in its own rules file, under
 rest of the system:
 
 ```toml
-[content.bounds.stations."Takenouchi Settlement (ii-42)"]
+[content.bounds.stations."Primary Station (AB-1)"]
 StationChatter = [12, 24]
 ```
 

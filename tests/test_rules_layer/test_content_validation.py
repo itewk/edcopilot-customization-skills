@@ -260,7 +260,9 @@ class TestValidateContentBasic:
 
     def test_valid_single_block_passes(self, content_base_rules_path, content_house_rules_path, content_systems_dir):
         """Valid content with single provenance block should pass."""
-        result = validate_content(VALID_SINGLE_BLOCK, "Test System", 
+        # The payload carries the CRLF endings syntax.encoding requires; the
+        # literal is LF for readability.
+        result = validate_content(VALID_SINGLE_BLOCK.replace("\n", "\r\n"), "Test System", 
                                   base_rules_path=content_base_rules_path,
                                   house_rules_path=content_house_rules_path,
                                   systems_dir=content_systems_dir)
@@ -272,7 +274,7 @@ class TestValidateContentBasic:
 
     def test_no_provenance_validates_full_file(self, content_base_rules_path, content_house_rules_path, content_systems_dir):
         """Content with no provenance should validate entire file."""
-        result = validate_content(NO_PROVENANCE, "Test System",
+        result = validate_content(NO_PROVENANCE.replace("\n", "\r\n"), "Test System",
                                   base_rules_path=content_base_rules_path,
                                   house_rules_path=content_house_rules_path,
                                   systems_dir=content_systems_dir)
@@ -388,6 +390,9 @@ class TestValidateContentSyntaxRules:
         assert len(findings) == 1
         assert findings[0].severity == "warn"
         assert "unknown_token" in findings[0].message
+        assert "declare the voice in the dossier" in findings[0].message
+        assert "system rules file" in findings[0].message
+        assert "README" not in findings[0].message
 
     def test_hardcoded_commander_is_error(self, content_base_rules_path, content_house_rules_path, content_systems_dir):
         """Hardcoded 'Commander' should be error."""
@@ -717,6 +722,64 @@ class TestValidateContentConfiguration:
             validate_content(CONTENT_HARDCODED_COMMANDER, "Test System")
 
         assert config_module.config is None
+
+
+class TestValidateContentLineEndings:
+    """``syntax.encoding`` must judge the payload the caller actually sent.
+
+    The temp file used to be written with ``newline='\\r\\n'``, which forced CRLF
+    onto every payload: a multi-line LF block falsely passed and a single-line
+    block falsely failed. These tests pin the real input's endings instead.
+    """
+
+    BLOCK = (
+        "<!-- provenance: tool=test model=test -->\n"
+        "@SystemGreeting<~>Test System\n"
+        "Welcome to the system, <Commander>.\n"
+    )
+
+    def _encoding_findings(self, result):
+        return [f for f in result.findings if f.rule == "syntax.encoding"]
+
+    def test_multi_line_lf_payload_reports_lf(
+        self, content_base_rules_path, content_house_rules_path, content_systems_dir
+    ):
+        result = validate_content(
+            self.BLOCK,
+            "Test System",
+            base_rules_path=content_base_rules_path,
+            house_rules_path=content_house_rules_path,
+            systems_dir=content_systems_dir,
+        )
+
+        messages = [f.message for f in self._encoding_findings(result)]
+        assert any("line ending is lf, expected crlf" in m for m in messages), messages
+
+    def test_crlf_payload_reports_crlf(
+        self, content_base_rules_path, content_house_rules_path, content_systems_dir
+    ):
+        result = validate_content(
+            self.BLOCK.replace("\n", "\r\n"),
+            "Test System",
+            base_rules_path=content_base_rules_path,
+            house_rules_path=content_house_rules_path,
+            systems_dir=content_systems_dir,
+        )
+
+        assert self._encoding_findings(result) == []
+
+    def test_single_line_payload_has_no_encoding_error(
+        self, content_base_rules_path, content_house_rules_path, content_systems_dir
+    ):
+        result = validate_content(
+            "@SystemGreeting<~>Test System",
+            "Test System",
+            base_rules_path=content_base_rules_path,
+            house_rules_path=content_house_rules_path,
+            systems_dir=content_systems_dir,
+        )
+
+        assert self._encoding_findings(result) == []
 
 
 class TestValidateContentIntegration:

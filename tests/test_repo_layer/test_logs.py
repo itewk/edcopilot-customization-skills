@@ -66,6 +66,15 @@ def test_check_logs_without_a_log_reports_not_checked(tmp_path):
     report = check_logs(tmp_path, datetime(2026, 10, 31, 10, 0, tzinfo=timezone.utc), tmp_path)
     assert report["checked"] is False
     assert report["ok"] is False
+    assert "No log found after the marker add" in report["summary"]
+    assert "restart EDCoPilot" in report["summary"]
+
+
+def test_check_logs_without_a_since_name_the_missing_custom_file(tmp_path):
+    report = check_logs(tmp_path, None, tmp_path)
+    assert report["checked"] is False
+    assert "No custom file found" in report["summary"]
+    assert "add the markers first" in report["summary"]
 
 
 def test_check_logs_clean_is_ok(tmp_path):

@@ -54,6 +54,13 @@ COMMAND_RE = re.compile(
     r"(?: (add|remove|start|status|review|finalize|abort))?`"
 )
 REFERENCE_LINK_RE = re.compile(r"\]\((references/[a-z-]+\.md)\)")
+# Looser than COMMAND_RE: a process line may put flags between the command and
+# its closing backtick, or carry two commands.
+DOCUMENTED_LINE_RE = re.compile(
+    r"edcg\.py ([a-z][a-z-]*)"
+    r"(?: (add|remove|start|status|review|finalize|abort))?"
+)
+FLAG_RE = re.compile(r"--[a-z][a-z-]*")
 
 
 def _unquote(value: str) -> str:
@@ -117,6 +124,31 @@ def _documented_commands(body: str) -> set[str]:
             command = f"{command} {match.group(2)}"
         found.add(command)
     return found
+
+
+def _command_tokens(match: re.Match) -> list[str]:
+    tokens = [match.group(1)]
+    if match.group(2):
+        tokens.append(match.group(2))
+    return tokens
+
+
+def _command_parser(tokens: list[str]) -> argparse.ArgumentParser:
+    """The parser that owns ``tokens``, e.g. the ``markdb add`` subparser."""
+    from edcg.cli import build_parser
+
+    current = build_parser()
+    for token in tokens:
+        subparsers = [
+            action
+            for action in current._actions
+            if isinstance(action, argparse._SubParsersAction)
+        ]
+        assert subparsers, f"{' '.join(tokens)} has no subcommand {token!r}"
+        choices = subparsers[0].choices
+        assert token in choices, f"unknown command token {token!r}"
+        current = choices[token]
+    return current
 
 
 class TestFrontmatter:
@@ -261,6 +293,19 @@ class TestBodyShape:
         assert "systems/" in text
         assert "audit-derived" not in lowered
 
+    def test_scripts_pause_for_gates_but_refuse_invalid_operations(self):
+        """No gate is enforced, but impossible operations still fail cleanly."""
+        _, body = _body()
+        text = " ".join(" ".join(body).split())
+        assert "never pause for a gate" in text
+        assert "refuse impossible or invalid operations" in text
+        for example in (
+            "a bad definition",
+            "a rewrite that would introduce errors",
+            "an existing repository on `init`",
+        ):
+            assert example in text, f"missing refusal example: {example}"
+
 
 class TestCommandList:
     """The documented command list and the parser must not drift apart."""
@@ -282,6 +327,71 @@ class TestCommandList:
         documented = _documented_commands("\n".join(body))
         missing = _registered_commands() - documented
         assert not missing, f"SKILL.md omits commands: {sorted(missing)}"
+
+    def test_documented_flags_are_accepted_by_their_command(self):
+        """A documented flag that the parser rejects is argument-form drift."""
+        from edcg.cli import build_parser
+
+        _, body = _body()
+        top = build_parser()
+        checked = 0
+        for line in body:
+            match = DOCUMENTED_LINE_RE.search(line)
+            if not match:
+                continue
+            tokens = _command_tokens(match)
+            parser = _command_parser(tokens)
+            argv = list(tokens)
+            # A line may also invoke a non-edcg command; only the edcg command's
+            # flags are under test.
+            subject = line[: line.find("`git ")] if "`git " in line else line
+            for flag in FLAG_RE.findall(subject):
+                action = next(
+                    (a for a in parser._actions if flag in a.option_strings),
+                    None,
+                )
+                assert action is not None, (
+                    f"{' '.join(tokens)} documents unknown flag {flag}: {line}"
+                )
+                argv.append(flag)
+                if action.nargs != 0:
+                    argv.append("value")
+                checked += 1
+            # An unregistered flag makes argparse exit 2.
+            top.parse_args(argv)
+        assert checked >= 8, f"only checked {checked} documented flags"
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ["gather-facts", "--system", "Test System"],
+            ["writing-brief-data", "--system", "Test System"],
+            ["get-content", "--system", "Test System"],
+            ["audit", "--system", "Test System"],
+            [
+                "check-logs",
+                "--since",
+                "2026-01-01T00:00:00",
+                "--system",
+                "Test System",
+            ],
+            ["markdb", "add", "--tag", "@SystemGreeting<~>Test System"],
+            ["markdb", "remove", "--tag", "@SystemGreeting<~>Test System"],
+        ],
+    )
+    def test_representative_argument_forms_parse(self, argv):
+        """The flags the docs tell the agent to pass must parse as written."""
+        from edcg.cli import build_parser
+
+        build_parser().parse_args(argv)
+
+    def test_gather_facts_always_documents_the_required_system_argument(self):
+        """Raven may have no entry, but the CLI still requires --system."""
+        _, body = _body()
+        rows = [line for line in body if "edcg.py gather-facts" in line]
+        assert rows, "SKILL.md never documents gather-facts"
+        for row in rows:
+            assert "--system" in row, f"gather-facts row omits --system: {row}"
 
 
 class TestProductIdentity:
@@ -328,9 +438,10 @@ def test_skill_md_has_numbered_process():
         "Mark for update",
         "Restart",
         "Check the logs",
+        "In-game test and upload",
         "Clear the markers",
     ):
         assert f"**{label}.**" in text, f"Process is missing the step {label!r}"
 
-    for number in range(1, 16):
+    for number in range(1, 17):
         assert f"\n{number}. **" in text, f"Process is missing step number {number}"

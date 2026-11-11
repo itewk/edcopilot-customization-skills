@@ -458,10 +458,14 @@ class TestWritingBrief:
     def test_section_bounds_are_carried_over(self):
         text = _read(WRITING_BRIEF)
         assert "SECTION SIZE" in text
-        assert "SystemGreeting: 3-6" in text
-        assert "StationGreeting: 4-8" in text
-        assert "StationChatter: 6-12" in text
-        assert "SystemBroadcast: 8-16" in text
+        for row in (
+            "| SystemGreeting | 3 | 6 |",
+            "| StationGreeting | 4 | 8 |",
+            "| StationChatter | 6 | 12 |",
+            "| SystemBroadcast | 8 | 16 |",
+            "| StationFact | 1 | 3 |",
+        ):
+            assert row in text, f"section-bound row drifted: {row}"
         assert "INCLUDE the filter-mandated lines" in text
         assert "paragraphs after the title" in text
         assert "the title is not a paragraph" in text
@@ -569,7 +573,8 @@ class TestWorkflowDetails:
         assert "8-10 lines" in lowered
         assert "static or live review" in lowered
         assert "progress table" in lowered
-        assert "nothing refuses" in lowered
+        assert "none of these gates refuses" in lowered
+        assert "in-game test and upload" in lowered
         assert "restart" in lowered
 
     def test_branch_management_is_documented(self):
@@ -624,6 +629,8 @@ class TestWorkflowDetails:
         assert "one marker per tag block" in lowered
         assert "rewrite-tag" in lowered
         assert "does not commit" in lowered or "owns the content commit" in lowered
+        assert "byte-compatibility" in lowered
+        assert "not the skill version" in lowered
 
 
 class TestReferenceCrossLinks:
@@ -635,3 +642,47 @@ class TestReferenceCrossLinks:
         assert "writing-brief.md" in text
         assert "rules.md" in text
         assert "workflow-details.md" in text
+
+    @pytest.mark.parametrize(
+        "path",
+        sorted(REFERENCES.glob("*.md")),
+        ids=lambda path: path.name,
+    )
+    def test_every_relative_markdown_link_resolves(self, path: Path):
+        """A link that does not resolve is a promise the reference cannot keep."""
+        link_re = re.compile(r"\]\(([^)\s]+\.md)(?:#[^)]*)?\)")
+        text = path.read_text(encoding="utf-8")
+        targets = link_re.findall(text)
+        assert targets, f"{path.name} links to no other reference"
+        for target in targets:
+            if "://" in target:
+                continue
+            resolved = (path.parent / target).resolve()
+            assert resolved.is_file(), (
+                f"{path.name} links to a missing file: {target}"
+            )
+
+
+class TestEnvironmentVariables:
+    """Every EDCG_* variable the code reads is explained where setup points."""
+
+    def test_config_reads_no_undocumented_environment_variable(self):
+        config_py = (
+            SKILL_DIR
+            / "scripts"
+            / "edcg"
+            / "common"
+            / "config.py"
+        )
+        names = set(re.findall(r"EDCG_[A-Z_]+", config_py.read_text(encoding="utf-8")))
+        assert names, "config.py reads no EDCG_* variables"
+        documented = _read(WORKFLOW)
+        missing = sorted(name for name in names if name not in documented)
+        assert not missing, (
+            f"workflow-details.md does not document: {missing}"
+        )
+
+    def test_inara_unavailable_has_a_documented_reason(self):
+        text = _read(WORKFLOW)
+        assert "EDCG_INARA_API_KEY" in text
+        assert "Inara API key is not configured" in text

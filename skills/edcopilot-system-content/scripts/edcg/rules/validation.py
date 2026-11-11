@@ -164,7 +164,7 @@ class Content:
     """Parsed content file."""
     path: Path
     lines: list[str]
-    line_ending: str
+    line_ending: str | None
     bom: bool
     provenance: list[tuple[int, dict]]
     tags: list[Tag]
@@ -413,7 +413,14 @@ def parse_content(path: Path, prov_pattern: re.Pattern, kinds: dict[str, Kind]) 
     data = path.read_bytes()
     bom = data.startswith(b"\xef\xbb\xbf")
     text = data.decode("utf-8-sig")
-    ending = "crlf" if "\r\n" in text else "lf"
+    # A single unterminated line carries no line ending to judge, so it must not
+    # be reported as LF (which would fail a CRLF-required rule).
+    if "\r\n" in text:
+        ending = "crlf"
+    elif "\n" in text:
+        ending = "lf"
+    else:
+        ending = None
     text = text.replace("\r\n", "\n")
     lines = text.split("\n")
     if lines and lines[-1] == "":
@@ -610,7 +617,8 @@ def rule_syntax_tokens(ctx: Context) -> None:
     for tok, lines in sorted(unknown.items()):
         ctx.add("syntax.token_known", known_cfg["severity"], lines[0],
                 f"<{tok}> is neither a built-in token nor a declared voice "
-                f"({len(lines)} uses); see the README for how to add one")
+                f"({len(lines)} uses); declare the voice in the dossier's "
+                "Voices section and in the system rules file")
     for tok, lines in sorted(miscased.items()):
         ctx.add("syntax.token_case", case_cfg["severity"], lines[0],
                 f"<{tok}> is a built-in token written in another case; write "
@@ -621,7 +629,7 @@ def rule_syntax_encoding(ctx: Context) -> None:
     cfg = ctx.rule("syntax.encoding")
     want = ctx.base.get("content", {})
     c = ctx.content
-    if c.line_ending != want.get("line_ending", "crlf"):
+    if c.line_ending is not None and c.line_ending != want.get("line_ending", "crlf"):
         ctx.add("syntax.encoding", cfg["severity"], None,
                 f"content line ending is {c.line_ending}, expected {want.get('line_ending')}")
     if c.bom != want.get("bom", False):
@@ -1296,11 +1304,13 @@ def validate_content(
         house_rules_path = systems_dir / "all.rules.toml"
     
     # --- Extract the latest provenance block ---
-    lines = content.splitlines()
+    # Keep the payload's own line endings: syntax.encoding must judge the input
+    # the caller sent, not a normalised copy of it.
+    lines = content.splitlines(keepends=True)
     provenance_indices = []
     
     for idx, line in enumerate(lines):
-        if PROVENANCE_RE.match(line):
+        if PROVENANCE_RE.match(line.rstrip("\r\n")):
             provenance_indices.append(idx)
     
     if provenance_indices:
@@ -1314,7 +1324,7 @@ def validate_content(
         block_lines = lines
         line_offset = 1
     
-    block_content = "\n".join(block_lines)
+    block_content = "".join(block_lines)
     
     # --- Load rules and create engine ---
     # Load base config
@@ -1354,7 +1364,9 @@ def validate_content(
     # We need to write to a temp file for parse_content, or adapt it
     # Let's create a temporary file
     import tempfile
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8', newline='\r\n') as tmp:
+    # newline="" preserves the payload's own endings; the default (or "\r\n")
+    # would translate them and hide a real LF payload from syntax.encoding.
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8', newline='') as tmp:
         tmp.write(block_content)
         tmp_path = Path(tmp.name)
     

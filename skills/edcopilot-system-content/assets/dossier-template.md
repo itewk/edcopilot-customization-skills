@@ -167,7 +167,7 @@ monologues and multi-character conversations: .
 
 Each **landable** station then gets a `@StationGreeting` set, a `@StationChatter`
 set and a `@StationFact` page — a title line, three paragraphs, and the shared
-ii42 tile on the `img_url=` line. A hub or an installation gets none of that,
+station tile on the `img_url=` line. A hub or an installation gets none of that,
 because EDCoPilot plays no station content for a facility with no landing pads.
 
 ### Stations covered

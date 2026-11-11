@@ -407,6 +407,52 @@ def test_markdb_add_marks_the_tag(monkeypatch, tmp_path, capsys):
     assert lines[:2] == [tag, "UPDATEDB"]
 
 
+def test_markdb_add_warns_on_a_tag_that_matched_nothing(
+    monkeypatch, tmp_path, capsys
+):
+    """A mistyped tag stays a no-op, but the no-op is made observable."""
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    tag = "@SystemGreeting<~>Test System"
+    typo = "@StationGreeting<~>Test System<~>Misspelt Station"
+    (runtime / CUSTOM_FILE_NAME).write_text(
+        f"{tag}\nHello.\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(tmp_path))
+    monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(runtime))
+    monkeypatch.setenv("EDCG_AUTO_COMMIT", "false")
+
+    assert cli.main(["markdb", "add", "--tag", tag, "--tag", typo]) == 0
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["modified_tags"] == [tag]
+    assert "warning" in captured.err.lower()
+    assert typo in captured.err
+    assert tag not in captured.err
+    assert "matched no authored content" in captured.err
+
+
+def test_markdb_remove_warns_on_a_tag_that_matched_nothing(
+    monkeypatch, tmp_path, capsys
+):
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    tag = "@SystemGreeting<~>Test System"
+    typo = "@StationChatter<~>Test System<~>Misspelt Station"
+    (runtime / CUSTOM_FILE_NAME).write_text(
+        f"{tag}\nUPDATEDB\nHello.\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(tmp_path))
+    monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(runtime))
+    monkeypatch.setenv("EDCG_AUTO_COMMIT", "false")
+
+    assert cli.main(["markdb", "remove", "--tag", tag, "--tag", typo]) == 0
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["modified_tags"] == [tag]
+    assert typo in captured.err
+    assert "matched no authored content" in captured.err
+
+
 def test_rewrite_tag_replaces_a_line(monkeypatch, tmp_path, capsys):
     runtime = tmp_path / "runtime"
     runtime.mkdir()
@@ -553,4 +599,20 @@ def test_check_logs_reports_an_unresolved_edcopilot_root(
     report = json.loads(capsys.readouterr().out)
     assert report["checked"] is False
     assert "Could not resolve EDCoPilot's root" in report["summary"]
+
+
+def test_check_logs_without_a_custom_file_names_that_condition(
+    monkeypatch, tmp_path, capsys
+):
+    """No custom file means the markers were never added, not that a log is missing."""
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(tmp_path))
+    monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(runtime))
+
+    assert cli.main(["check-logs"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["checked"] is False
+    assert "No custom file found" in report["summary"]
+    assert "add the markers first" in report["summary"]
 

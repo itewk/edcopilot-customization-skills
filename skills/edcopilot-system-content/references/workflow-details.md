@@ -19,6 +19,23 @@ Two root directories, never confused:
 The skill writes only the custom file and marker lines in the runtime folder. It
 never edits game configuration, keybinds or other EDCoPilot files.
 
+## Environment variables
+
+Every `EDCG_*` setting is read from the environment; none is required. A variable
+that is unset or empty falls back to the default in the table.
+
+| Variable | Effect |
+|---|---|
+| `EDCG_EDCOPILOT_ROOT` | The runtime root (EDCoPilot's "User custom files" folder). Resolution order: this variable when it names an existing directory, then `roots.edcopilot` in the content repository's config file (a relative value resolves against the content root), then ask the user. |
+| `EDCG_CONTENT_DEFINITIONS_ROOT` | Content root override. Defaults to the current working directory; it must name an existing writable directory. |
+| `EDCG_EDCOPILOT_LOGS_DIR` | Logs directory override. Defaults to the `logs/` sibling of the EDCoPilot root, falling back to `logs/` inside it. |
+| `EDCG_AUTO_COMMIT` | Gates the runtime writes only: `write-content`, `markdb add` and `markdb remove` commit when it is true (the default). `save-definition` always commits, and `init` commits unless `--no-git` was passed. |
+| `EDCG_INARA_API_KEY` | Inara API key. When unset, Inara checks are skipped and `audit` reports "Inara API key is not configured." — the answer to "why is Inara unavailable". |
+| `EDCG_SPANSH_ENABLED` | Whether Spansh is queried. Defaults to true. |
+| `EDCG_RAVEN_API_URL` | Raven Colonial base URL. Defaults to the hosted Raven Colonial service. |
+| `EDCG_LOG_LEVEL` | Logging threshold. Defaults to `INFO`. |
+| `EDCG_DEEPL_API_KEY` | Reserved; accepted and ignored. Nothing uses it yet. |
+
 ## The marker cycle
 
 Content is invisible to EDCoPilot's database until a tag carries an `UPDATEDB`
@@ -29,11 +46,16 @@ line. The marker goes on the line **after** its tag line.
    comment and makes one commit.
 3. Run `edcg.py markdb add` with every tag in the block (repeat `--tag` or send
    a JSON payload with `tags`). Every marker lands in one write and one commit.
+   The command prints a warning for any requested tag that matched no authored
+   content: compare `modified_tags` to the tags you passed, and stop and
+   reconcile the station or tag name before proceeding.
 4. Ask the user to restart EDCoPilot, then confirm they did.
 5. Run `edcg.py check-logs` and show the report.
-6. Test the content in game and upload the database from inside EDCoPilot, then
-   run `edcg.py markdb remove` with the same tags. Every marker clears in one
-   write and one commit.
+6. Ask the user to test the content in game and upload the database from inside
+   EDCoPilot, then run `edcg.py markdb remove` with the same tags. Every marker
+   clears in one write and one commit. A missing tag in `modified_tags` matched
+   no authored content: stop and reconcile the station or tag name before
+   proceeding.
 
 Do not add `UPDATEDB` by hand before `edcg.py markdb add`: the script owns the
 marker and the commit. If a tag disappears from the file, stop and find out why
@@ -63,12 +85,13 @@ Show the result per-tag. When a tag failed, the **user decides**: fix the
 content and repeat the marker cycle, or accept the failure and continue. Do not
 hide a failure, and do not remove markers to make a report look clean.
 
-An `ok: false` with `checked: false` means no log was found at all; say so
-rather than calling it a pass.
+An `ok: false` with `checked: false` means no cycle can be checked yet: no log
+was found after the marker add, or no custom file exists to date the cycle. The
+summary names which, so say which one it is rather than calling it a pass.
 
 ## Advisory gates
 
-Nothing refuses; the agent asks and then obeys the answer.
+None of these gates refuses; the agent asks and then obeys the answer.
 
 - **Preview** — after the definition is saved, ask whether the user wants a
   small representative sample before the full generation. Show the
@@ -83,12 +106,15 @@ Nothing refuses; the agent asks and then obeys the answer.
 - **Restart** — after markers are added, ask the user to restart EDCoPilot and
   confirm before the log check.
 - **Log check** — present the per-tag report before removing markers.
+- **In-game test and upload** — after the log check, ask the user to test the
+  content in game and upload the database from inside EDCoPilot. Only after they
+  confirm, remove the markers.
 
 Show a **progress table** at every gate, derived from the repository rather than
-stored: `edcg.py branch status` for the active branch, `edcg.py get-content` for
-authored tags and their counts, the custom file for open `UPDATEDB` markers, and
-`systems/` for the dossier and rules files. Read them together; the content
-repository is the state.
+stored: `edcg.py branch status` for the active branch,
+`edcg.py get-content --system <name>` for authored tags and their counts, the
+custom file for open `UPDATEDB` markers, and `systems/` for the dossier and
+rules files. Read them together; the content repository is the state.
 
 ## Audit
 
@@ -150,7 +176,9 @@ a branch the user did not ask for.
   user to commit or stash first.
 - A provenance comment marks the start of authored content, one marker per tag block. Validation reads from the last provenance marker, and the rewrite path
   collapses intermediate markers before validating so an edit is still checked
-  against every authored block.
+  against every authored block. The provenance comment uses the historical
+  package identifier and version `0.1.0` deliberately, to keep byte-compatibility
+  with previously written content; it is not the skill version.
 
 ## Stop and ask the human
 

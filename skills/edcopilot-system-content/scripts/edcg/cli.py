@@ -154,6 +154,24 @@ def _git_config(key: str) -> Optional[str]:
     return value or None
 
 
+def _git_binary() -> Optional[str]:
+    """The ``git --version`` line, or None when git is not on PATH.
+
+    This is deliberately separate from the identity probe: without a binary the
+    identity question is meaningless, and the ``git config`` hint would send the
+    user to a command they cannot run.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "--version"], capture_output=True, text=True, timeout=30
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
 def _git_identity() -> tuple[Optional[str], Optional[str]]:
     return _git_config("user.name"), _git_config("user.email")
 
@@ -195,28 +213,43 @@ def command_doctor(args: argparse.Namespace) -> int:
         "install Python 3.12 or newer and run the script with it",
     )
 
-    for module, hint in (("httpx", "pip install httpx gitpython"),
-                         ("git", "pip install httpx gitpython")):
+    for module, label, hint in (
+        ("httpx", "httpx", "pip install httpx gitpython"),
+        ("git", "gitpython", "pip install httpx gitpython"),
+    ):
         ok, detail = _check_import(module)
-        passed &= _report_line(module, ok, detail, hint)
+        passed &= _report_line(label, ok, detail, hint)
 
-    name, email = _git_identity()
-    if name and email:
-        passed &= _report_line(
-            "git identity", True, f"{name} <{email}>"
-        )
+    git_version = _git_binary()
+    git_available = git_version is not None
+    if git_available:
+        passed &= _report_line("git", True, git_version)
     else:
-        missing = ", ".join(
-            label for label, value in (("user.name", name), ("user.email", email))
-            if not value
-        )
         passed &= _report_line(
-            "git identity",
+            "git",
             False,
-            f"missing {missing}",
-            'git config --global user.name "Your Name" && '
-            'git config --global user.email "you@example.com"',
+            "git not found on PATH",
+            "install git and put it on PATH",
         )
+
+    if git_available:
+        name, email = _git_identity()
+        if name and email:
+            passed &= _report_line(
+                "git identity", True, f"{name} <{email}>"
+            )
+        else:
+            missing = ", ".join(
+                label for label, value in (("user.name", name), ("user.email", email))
+                if not value
+            )
+            passed &= _report_line(
+                "git identity",
+                False,
+                f"missing {missing}",
+                'git config --global user.name "Your Name" && '
+                'git config --global user.email "you@example.com"',
+            )
 
     content_root: Optional[Path] = None
     try:
@@ -528,6 +561,32 @@ def command_rewrite_tag(args: argparse.Namespace) -> int:
     return 0
 
 
+def _warn_unmatched_tags(requested: list[str], modified: list[str]) -> None:
+    """Make a marker no-op observable without turning it into a failure.
+
+    A mistyped tag matches no authored content and the call stays a no-op, which
+    is the old tool's parity behaviour. The warning names the tags so the caller
+    can reconcile the station or tag name instead of assuming the marker landed.
+    """
+    matched = set(modified)
+    seen: set[str] = set()
+    missing: list[str] = []
+    for tag in requested:
+        stripped = tag.strip()
+        if stripped and stripped not in seen and stripped not in matched:
+            seen.add(stripped)
+            missing.append(stripped)
+    if not missing:
+        return
+    print(
+        "warning: requested tag(s) matched no authored content: "
+        + ", ".join(missing)
+        + " — compare modified_tags to the tags you passed, then reconcile "
+        "the station/tag name before proceeding",
+        file=sys.stderr,
+    )
+
+
 def command_markdb(args: argparse.Namespace) -> int:
     data: dict = {}
     if not args.tag:
@@ -538,6 +597,7 @@ def command_markdb(args: argparse.Namespace) -> int:
         result = markdb_add(tags, commit_co_author=co_author)
     else:
         result = markdb_remove(tags, commit_co_author=co_author)
+    _warn_unmatched_tags(tags, result["modified_tags"])
     _emit(result)
     return 0
 
