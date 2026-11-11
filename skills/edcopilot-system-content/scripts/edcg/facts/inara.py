@@ -98,7 +98,10 @@ class InaraClient:
         but this client POSTs a JSON body carrying the Inara API key: replaying
         that body cross-origin on a 307/308 is an unnecessary exposure, and a
         redirect from the API endpoint signals a configuration problem rather
-        than a legitimate move. A redirect surfaces as an HTTP error instead.
+        than a legitimate move. A redirect therefore reaches the caller
+        unfollowed: the 3xx body is usually HTML, so parsing it fails and the
+        request surfaces as ``InaraAPIError("Invalid JSON response")`` rather
+        than a successful response.
         """
         if self._client is None:
             self._client = httpx.AsyncClient(

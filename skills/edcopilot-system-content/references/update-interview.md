@@ -200,7 +200,7 @@ Once `validate-definition` returns `passed: true`:
    }
    ```
 
-2. It overwrites both files, creates `edcg: update <system> - <summary>`, adds
+2. It overwrites both files, creates `edcg: update <system> — <summary>`, adds
    the trailer `Co-authored-by: 🤖 <harness> (<models>) <email>` from
    `commit_co_author`, and returns the commit hash and files changed.
 3. Verify with `git -C <content root> log -1 --oneline`.

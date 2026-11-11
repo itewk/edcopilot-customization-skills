@@ -592,8 +592,8 @@ class TestWorkflowDetails:
         lowered = text.lower()
         assert "three commits" in lowered
         assert "edcg: content" in lowered
-        assert "edcg: scaffold <system> - <summary>" in text
-        assert "edcg: update <system> - <summary>" in text
+        assert "edcg: scaffold <system> — <summary>" in text
+        assert "edcg: update <system> — <summary>" in text
         assert "edcg: markdb add <n> tag(s)" in text
         assert "edcg: markdb remove <n> tag(s)" in text
         assert "tag list goes in the commit body" in lowered

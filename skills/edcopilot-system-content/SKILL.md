@@ -149,8 +149,8 @@ Details: [`references/workflow-details.md`](references/workflow-details.md).
 The scripts commit for you, with the co-author trailer you pass as
 `commit_co_author` (`🤖 <harness> (<models>) <email>`). Subjects:
 
-- `edcg: scaffold <system> - <summary>` — a new dossier and rules pair;
-- `edcg: update <system> - <summary>` — a changed dossier and rules pair;
+- `edcg: scaffold <system> — <summary>` — a new dossier and rules pair;
+- `edcg: update <system> — <summary>` — a changed dossier and rules pair;
 - `edcg: content <system>` — appended content and any staged rewrites;
 - `edcg: markdb add <n> tag(s)` — the markers added in one commit, with the tag
   list in the body;
