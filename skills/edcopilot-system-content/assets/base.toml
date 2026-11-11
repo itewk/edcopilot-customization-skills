@@ -1,0 +1,527 @@
+# The base rule set. It ships with the tool, in tools/rules/, and holds what
+# every author of colonisation content has to meet, whoever the author is: no
+# rule here is one project's taste.
+#
+# Layout
+#   Three files can say something about a rule, and the later one wins:
+#     tools/rules/base.toml           every author (this file)
+#     systems/all.rules.toml          one author, every one of their systems
+#     systems/<dossier>.rules.toml    one author, one system
+#
+#   A file declares a rule by naming its implementation, `impl = "rule_..."` for
+#   a check or `impl = "policy"` for a requirement a reader checks. A table with
+#   no `impl` changes an existing rule instead, naming the rule's path and giving
+#   only the keys that change - which is how all.rules.toml retunes a rule, or
+#   retires it with `severity = "off"`, without restating the rest of it. Only
+#   the last of the three files may not declare a rule of its own: one that
+#   applies to every system belongs in all.rules.toml, or it would run against
+#   every system's tags while looking as if it applied to one.
+#
+# Every rule carries a `why`. A rule whose reason is not written down is a rule
+# nobody can safely change or retire.
+#
+# Every rule also names the function that finds it, in `impl = "rule_..."`. The
+# registry that used to sit in edc.py is gone: this file says what is checked and
+# why, the code says only how. Two rules may name one function when a single pass
+# over the content finds both.
+#
+# `impl = "policy"` is the one value that names no function. The rule states a
+# requirement that a reader checks - a model writing the content, or the author
+# reading it - and this program cannot: no word list can tell an accident from
+# something a commander asked for. A policy rule carries no severity, because
+# there is no finding for one to rank, and `validate` names it after every run
+# so that a requirement nothing checks is not a requirement nobody remembers.
+#
+# Severities are error (fails validate), warn (advisory) or info (report only).
+# `severity = "off"` retires a rule and says nothing, `why` and all.
+
+version = 1
+
+[content]
+file = "EDCoPilot.SpeechExtensions.Custom.txt"
+line_ending = "crlf"
+bom = false
+
+[content.bounds]
+# How many examples a section should carry. Counts are total lines per tag and
+# are inclusive: the filter-mandated lines (one allbusiness, one unfiltered)
+# count toward the minimum, so a minimum of 3 leaves one creative line.
+# A StationFact is bounded by paragraphs inside its block, not by tag count.
+# A system overrides a kind in its own rules file, and may override a single
+# station under [content.bounds.stations."<exact station name>"].
+SystemGreeting = [3, 6]
+StationGreeting = [4, 8]
+StationChatter = [6, 12]
+SystemBroadcast = [8, 16]
+StationFact = [1, 3]
+
+[rules.content.bounds]
+impl = "rule_content_bounds"
+severity = "error"
+max_severity = "warn"
+why = """
+A section nobody added to is a section nobody hears twice. The minimum is an
+error because the section is incomplete; the maximum is a warning because
+volume is a matter of taste and the writer may have a reason.
+"""
+
+[provenance]
+# The authored region begins at the first provenance line. Everything above it
+# is EDCoPilot's own default content: exempt from content policy, but still
+# checked for malformed syntax, because a broken filter is a bug wherever it
+# sits. Scope applies to policy, not to bugs.
+pattern = '^<!--\s*provenance:(?P<body>.*?)-->\s*$'
+
+[vocab]
+# EDCoPilot's tokens: the <names> a phrase may carry for EDCoPilot to substitute
+# or resolve when it speaks the line. A token missing from here is a warning,
+# never a failure - EDCoPilot ships more than anyone has written down, and this
+# is a guard against typos, not a dictionary.
+#
+# Two sources, and where they disagree the second wins, because it is the
+# spelling that runs. tools/README.md carries the refresh procedure.
+#   the wiki    razzserver.com/dokuwiki/doku.php?id=speech_extensions_tokens
+#               the Global Tokens table, taken 2026-10-17
+#   the master  C:\EDCoPilot\working\EDCoPilot.SpeechExtensions.txt
+#               EDCoPilot's own content, which shows what it actually ships
+#
+# One spelling per token is canonical, so that `syntax.token_case` has something
+# to say, and one meaning per token, so that no second copy of the list exists
+# anywhere to drift from this one.
+
+# Documented nowhere, the Global Tokens table included: EDCoPilot's own content
+# uses these, so they resolve, but what it substitutes for them is not written
+# down anywhere. They are listed so that copy from the master file is not
+# reported as a typo - not as an invitation to use them.
+undocumented = [
+  "systemname", "bodyName", "bodyType", "greeting", "ship1", "ship2", "ship3",
+  "anyship", "shipvessel", "Famousstarsystem", "Prisonstarsystem",
+  "thargoidSystem", "stationFaction", "stationNick", "stationpart",
+  "stationevent",
+]
+
+# The documented tokens, spelled as the table spells them, with what EDCoPilot
+# substitutes for each. <fuellevels> is the exception: the table spells it that
+# way, the master writes <fuelLevels>, and the master wins.
+[vocab.documented]
+Commander = "\"Commander\", or the alternate address the player configured"
+Nice = "\"Awesome\", \"Excellent\", \"Oh good job\", \"Nice job <Commander>\""
+cmdrname = "the character name, without the \"Commander\" in front"
+cmdraddress = "\"Sir\", \"Ma'am\" or \"Commander\", from the gender setting"
+myshipname = "the name of the active ship"
+fuelLevels = "the current fuel level, as a percentage"
+starsystem = "the name of the current system"
+randomstarsystem = "the name of a random populated system"
+stationname = "the name of the station the player is at"
+fcCaptain = "the name of the player's Fleet Carrier captain"
+shipAIName = "the name the player gave their ship AI"
+mycallsign = "the callsign of the player's own ship"
+callsign = "a random callsign"
+othercallsign = "a different random callsign"
+flightnum = "a random three-digit number"
+shipCorporation = "a random ship corporation name"
+shipCorpShipType = "a ship type to go with that corporation"
+localdestination = "a station or installation in this system, else a local system"
+
+# --------------------------------------------------------------------------- kinds
+
+[kinds]
+# Every tag kind the rule set knows, and what each `<~>`-separated field of the
+# tag holds. `format.tag_shape` checks the tag line against this, and the rules
+# ask a tag for its "system" or its "station" rather than for a kind name, so a
+# kind can be added here without touching the code.
+#
+# A `@Tag` whose kind is not in this table is reported, never skipped: a tag the
+# rule set does not know is a tag under which every line goes unchecked.
+#
+# `spoken` marks the kinds EDCoPilot speaks aloud. A fact is a page, so it is
+# not spoken and takes no filters, which `content.fact_no_filters` holds and
+# `filters.fallback` has to know: a page cannot be gated for a player in a mode,
+# it is simply read.
+
+[kinds.SystemGreeting]
+parts = ["system"]
+spoken = true
+
+[kinds.SystemBroadcast]
+parts = ["system"]
+spoken = true
+
+[kinds.StationGreeting]
+parts = ["system", "station"]
+spoken = true
+
+[kinds.StationChatter]
+parts = ["system", "station"]
+spoken = true
+
+[kinds.StationFact]
+parts = ["system", "station"]
+
+# EDCoPilot's own pages. An author writes no content for them and they carry no
+# system or station, but the custom file may contain them, so they are declared
+# rather than reported as unknown.
+[kinds.ConfirmedCommander]
+parts = []
+
+[kinds.CoPilotStarting]
+parts = []
+
+[kinds.RandomShipName]
+parts = []
+
+
+# --------------------------------------------------------------------------- rules
+
+[rules.syntax.filter_known]
+impl = "rule_syntax_filter_known"
+severity = "error"
+severity_outside_scope = "warn"
+why = """
+A (word) in a filter's position that is not a real filter is not stripped from
+the phrase, so the word is spoken aloud. The rule runs file-wide, because a
+broken filter is a bug wherever it sits, but it only fails inside the authored
+region: everything above the first provenance line is EDCoPilot's own text.
+"""
+# Accepted because EDCoPilot's own content uses them, and documented nowhere, so
+# no meaning is claimed for them here.
+undocumented = ["enjoysmining", "forcetannoy", "forceradio", "ignore_if_economy"]
+
+# Every filter a phrase may carry, with what has to be true for the phrase to be
+# eligible at all. From the wiki's custom speech extensions table. A house rule
+# that follows from one belongs in the author's own file, not beside this.
+[rules.syntax.filter_known.filters]
+allbusiness = "All Business mode is ON - and in that mode only (allbusiness) phrases are used"
+vegan = "Vegan mode is OFF"
+profanity = "profanity mode is ON"
+flirt = "Sweetheart mode is ON"
+innuendo = "innuendo mode is ON"
+alcohol = "Alcohol Free mode is OFF"
+toughlove = "the AI is allowed to insult the commander"
+dislikesmining = "Dislikes Mining is ON"
+notranslate = "always eligible, but skipped by the translation service"
+homesystem = "the player is in the home system"
+nothomesystem = "the player is not in the home system"
+CMDRisMale = "the commander's gender is set to male"
+CMDRisFemale = "the commander's gender is set to female"
+AIisMale = "the AI's gender is set to male"
+AIisFemale = "the AI's gender is set to female"
+crime_neutral = "the player is neutral about crime"
+crime_dislike = "the player dislikes crime"
+crime_like = "the player likes crime"
+XenoStance_Anti = "the player is anti-xeno"
+XenoStance_Peace = "the player is xeno-neutral"
+XenoStance_Pro = "the player is pro-xeno"
+
+[rules.syntax.filter_leads]
+impl = "rule_syntax_filter_leads"
+severity = "error"
+why = """
+A filter marker leads the phrase it gates. For a phrase with no voice tag that
+is the line; for a character line it is the chunk after a voice tag, which is
+where EDCoPilot's own content puts it 137 times against 42 the other way.
+
+A marker in front of the first voice tag is neither. EDCoPilot splits a
+character line at each voice tag and speaks what comes before the first one as
+a phrase of its own, where nothing acts on the marker: "(allbusiness)" was heard
+in game as the words "all business", and the flag gated nothing there either -
+those lines played with All Business mode off. EDCoPilot's own speech cache
+holds the proof: entries in the EdgeCache folder of its install whose whole text
+is (allbusiness), generated from lines of exactly this shape. No marker of any
+kind has ever reached that cache from the position after a tag.
+"""
+
+[rules.syntax.voice_name]
+impl = "rule_syntax_voice_name"
+severity = "warn"
+why = """
+EDCoPilot reads a voice tag as [<Name>] and splits a line at every tag. The name
+must be one token: a space ends the tag, so [<Garrett Control>] does not resolve
+and the words after the space are spoken as ordinary text. The same rule applies
+to every voice declared in system.voices, because a declaration with a space can
+only produce tags that fail the same way.
+
+This starts as a warning so existing content keeps validating. Raise it to an
+error once the content repository has migrated its voice names to single tokens.
+"""
+
+[rules.syntax.token_known]
+impl = "rule_syntax_tokens"
+severity = "warn"
+why = """
+A <token> that is neither an EDCoPilot built-in nor a voice declared for the
+system is spoken as literal text. Aggregated: one finding per unknown token,
+not one per occurrence.
+"""
+
+[rules.syntax.token_case]
+# Found by the same pass as `syntax.token_known`: the one walk over the tokens
+# checks both whether a token is known and whether it is spelled canonically.
+impl = "rule_syntax_tokens"
+severity = "warn"
+why = """
+A built-in token written in another case may not resolve at all, and a token
+that does not resolve is spoken as literal text. The vocabulary below holds one
+canonical spelling per token - the wiki's Global Tokens table where it documents
+the token, EDCoPilot's own content where it does not. Aggregated per token, and
+worth one confirmation in game rather than a rewrite on the strength of a lint
+alone.
+"""
+
+[rules.syntax.encoding]
+impl = "rule_syntax_encoding"
+severity = "error"
+why = """
+The content file is CRLF in the working tree and has no BOM: that is the form
+EDCoPilot reads, and the form a tool that rewrites it must write back. A save
+with LF, or a BOM, shows every line as changed in git, and EDCoPilot has never
+been asked to cope with a BOM.
+"""
+
+[rules.syntax.no_example_wrapper]
+impl = "rule_syntax_no_example_wrapper"
+severity = "error"
+why = """
+The [example] / [\\example] wrapper belongs to the chatter files, which use one
+speaking turn per line. In the speech extensions file a conversation is one
+line with [<voice>] tags, so the wrapper makes every turn a separate phrase.
+"""
+
+[rules.format.tag_shape]
+impl = "rule_format_tag_shape"
+severity = "error"
+why = """
+A tag line has to be a kind the rule set knows, carrying the fields that kind
+declares in [kinds]. A tag whose kind nobody declares used to be dropped without
+a word, so every line beneath it was silently unchecked; and a tag missing a
+<~> field - a station greeting with no station, say - was never noticed at all.
+This is the rule that checks the line rather than what it says.
+"""
+
+# ------------------------------------------------------------------------- filters
+#
+# Two kinds of rule here, and what separates them is who checks.
+#
+# `filters.<filter>.required` states the publisher's own requirement, from the
+# "IMPORTANT NOTES ON PUBLISHING CONTENT" on the wiki's colonisation page:
+# respect the filter tags. A phrase whose content is of a kind a filter gates has
+# to carry that filter, or the phrase is heard by a player who asked not to hear
+# it. None of them forbids a subject - that is a house rule's business, not the
+# tool's. `impl = "policy"`, because nothing below reads words: no list can tell
+# a metaphor about a low bar from a bar, or an accident from something the
+# commander asked for.
+#
+# `filters.fallback` and `filters.allbusiness` are the mechanical half: whatever
+# filters a tag does carry, every player must still hear something from it.
+
+[rules.filters.vegan.required]
+impl = "policy"
+why = """
+A phrase naming meat or an animal carries (vegan), so a player in Vegan mode does
+not hear it. That is EDCoPilot's own published requirement, and the filter table
+under syntax.filter_known says what (vegan) gates.
+
+A station's own name is a name, not a reference. A station whose name is a meat
+reference is still named rather than referenced: it is heard that way by
+everybody, a vegan player included, because the commander sees the name on the
+HUD either way. Naming the place needs no filter, and no filter would help.
+
+What the line says is the author's; that it carries the filter is the
+requirement. A reader checks it, not this program.
+"""
+
+[rules.filters.alcohol.required]
+impl = "policy"
+why = """
+A phrase naming drink carries (alcohol), so a player in Alcohol Free mode does
+not hear it. That is EDCoPilot's own published requirement, and the filter table
+under syntax.filter_known says what (alcohol) gates.
+
+The subject is gated here, not forbidden. A Station Fact has nowhere to put a
+filter - it is a page, not a phrase EDCoPilot picks from a list - so a fact
+naming drink is a line to write differently instead; `content.fact_no_filters`
+holds the page side of that.
+
+A reader checks this, not this program: a bar is a room and an idiom before it is
+a drink.
+"""
+
+[rules.filters.profanity.required]
+impl = "policy"
+why = """
+Bad language carries (profanity), so a player who has profanity switched off does
+not hear it. The publisher's note gives this as its own example, and the filter
+table under syntax.filter_known says what (profanity) gates.
+
+A reader checks it. A word list would have to be written down and kept, and it is
+the list that dates, not the requirement.
+
+An author's own file may go further and forbid the content rather than gate it,
+but that is taste rather than something EDCoPilot requires of anybody, so it is
+declared there and not here.
+"""
+
+[rules.filters.flirt.required]
+impl = "policy"
+why = """
+A phrase that flirts carries (flirt), so a player who has Sweetheart mode off
+does not hear it. That is EDCoPilot's own published requirement, and the filter
+table under syntax.filter_known says what (flirt) gates.
+
+A reader checks it: flirtation is a tone, and most of it sits in no word at all.
+"""
+
+[rules.filters.innuendo.required]
+impl = "policy"
+why = """
+A phrase carrying sexual innuendo carries (innuendo), so a player who has
+innuendo switched off does not hear it. The publisher's note gives this as its
+own example, and the filter table under syntax.filter_known says what (innuendo)
+gates.
+
+A reader checks it, and here more than anywhere: the same sentence is innocent in
+one voice and not in another, so the rule states the requirement and leaves the
+hearing to something that can hear.
+"""
+
+[rules.filters.allbusiness]
+impl = "rule_filters_allbusiness"
+severity = "error"
+warn_below = 1
+why = """
+All Business mode plays ONLY phrases flagged (allbusiness), so a tag with none is
+silent in that mode: one is the floor, and a tag with none is an error. Station
+Facts are pages, not randomly chosen phrases, so they are exempt.
+
+How many is a pattern rather than the floor is taste: it depends on the tag, and
+an author's own file sets `warn_below`, or `warn_below_by_kind` where one kind
+carries a single short line by design. The rule here holds the floor that
+EDCoPilot's mode requires.
+"""
+applies_to = ["SystemGreeting", "SystemBroadcast", "StationGreeting", "StationChatter"]
+
+[rules.filters.fallback]
+impl = "rule_filters_fallback"
+severity = "error"
+require_allbusiness_clean = true
+why = """
+Whatever a tag's filters are, every player must still hear something from it. A
+filter is a gate: a phrase carrying one is never played while that mode is on,
+and in All Business mode only phrases flagged (allbusiness) are candidates at
+all. So a tag whose every line carries a filter is silent for whoever has that
+mode set.
+
+One rule for every mode rather than one per filter, because the mechanic is one
+mechanic. It does not ask what a line says - meat, drink, or nothing - only
+whether what it carries could keep it from being played: a line with no filter at
+all, and (with require_allbusiness_clean) a line carrying (allbusiness) and
+nothing else. Filters stack, so (vegan)(allbusiness) is a legal line; it is also
+one that a player with Vegan mode on will never hear, which is why the line that
+saves them has to carry (allbusiness) alone.
+"""
+
+[rules.content.fact_image]
+impl = "rule_content_fact_image"
+severity = "error"
+why = """
+Every station fact carries a picture, on its `img_url=` line: the order is the
+tag, the database marker, img_url, the title, then the paragraphs. A fact with no
+img_url renders as text alone, and the image is the one part of the page that is
+not prose, so it is the one part a rule can hold.
+
+Which picture is the author's business rather than the tool's. `expected` is
+unset here, so any picture passes; an author's own file sets it to their logo,
+and then a fact pointing somewhere else is drift rather than a matter of taste.
+"""
+
+[rules.content.no_links]
+impl = "rule_content_no_links"
+severity = "error"
+why = """
+No link in the text the copilot speaks, and none on a Station Fact either except
+the img_url= line that carries its picture.
+
+The publisher's note bans linking to explicit images, and a link is exactly the
+promise a linter cannot check: nothing here fetches a URL, and a URL in a phrase
+is read out loud one character at a time. So the half of that rule the tool can
+keep is that a picture lives where pictures belong, on the fact's own line, where
+content.fact_image already holds it to one value.
+
+Revisit: fetching that one image and having a model look at it may be possible
+later, if the model in use can see an image at all. tools/README.md records it
+under what is not built yet.
+"""
+
+[rules.content.fact_no_filters]
+impl = "rule_content_fact_no_filters"
+severity = "error"
+why = """
+A Station Fact takes no filters. It is a page, not a phrase EDCoPilot picks from
+a list, so a filter at the front of a fact line gates nothing: it is read as part
+of the page, or as a word nobody strips. The filters belong to the spoken kinds,
+and a fact that would need one needs writing differently instead, which is what
+the `filters.<filter>.required` rules say and why the ones about facts are
+addressed to a reader.
+"""
+
+[rules.content.station_landable]
+impl = "rule_content_station_landable"
+severity = "error"
+not_landable_classes = ["hub", "installation"]
+why = """
+EDCoPilot supports no station greeting, chatter or fact for a facility that
+cannot be landed at, which is every hub and every installation: they have no
+landing pads. Content written for one of those is content nobody will ever hear,
+which is exactly how it was missed until now.
+
+Facilities are classified by build type from the Raven Colonial table, copied to
+the tool's `build_types.toml`, and never by the in-game name: landable stations
+are named "Hub" and "Installation" too.
+
+The build type comes from the dossier's section 4 site tables, so that a station
+is classified in one place only. A station with content that no dossier
+classifies is an error - its landability is simply unknown - and a build type
+that is not in the table at all is a warning, because a new facility type must
+not slip through as if it were landable.
+"""
+
+[rules.content.commander_token]
+impl = "rule_content_commander_token"
+severity = "error"
+why = """
+What the copilot calls the player is a setting, not a word: EDCoPilot replaces
+<Commander> with the address the player chose, <cmdrname> with the character name
+and <myshipname> with the ship's name. A hardcoded "Commander" is spoken as
+written, so it ignores the setting and is wrong for every player who chose
+something else. The word is searched outside the token spans, so <Commander>
+itself is fine.
+"""
+
+[rules.db.placement]
+impl = "rule_db_placement"
+severity = "error"
+why = """
+The database marker goes on the line after the @tag; in a Station Fact that
+places it above the title line, which is where the format expects it. A marker
+anywhere else is ignored by EDCoPilot and looks like it worked.
+
+It is a publishing step, not a permanent annotation: EDCoPilot rereads that tag
+on its next start and prints an INFO record in the Voice Log, and it does so
+again on every start while the marker is there. Put it on a tag whose content
+changed, and take it out again once the log shows the update.
+"""
+
+[rules.dossier.spine]
+impl = "rule_dossier_spine"
+severity = "error"
+title_severity = "warn"
+why = """
+Every dossier shares the one spine declared below, so that a section number means
+the same thing in each file. Section order is an error; a title that drifts from
+the declared wording is a warning.
+"""
+sections = [
+  "Identity and canon", "Lore and theme", "Tone rules (hard constraints)",
+  "Canon site table", "Corrections log (do not reintroduce these)",
+  "Site list maintenance", "Coverage", "Writing rules", "Open threads (TODO)",
+]
