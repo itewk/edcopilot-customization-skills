@@ -3,11 +3,13 @@
 The old package served its instructions from Python prompt builders. The skill
 serves the same instructions from markdown, so these tests assert the structure
 the agent needs at discovery time: valid frontmatter, a body short enough to
-load whole, the nine spine sections, working reference links, and a command
-list that cannot drift from the CLI's registered subcommands.
+load whole, the eight spine sections, working reference links, and the commands
+the Process steps name inline that cannot drift from the CLI's registered
+subcommands (`--help` is the interface documentation, so there is no table).
 """
 
 import argparse
+import functools
 import re
 from pathlib import Path
 
@@ -29,11 +31,10 @@ EXPECTED_REFERENCES = [
     "workflow-details.md",
 ]
 
-# The nine spine sections, in order.
+# The eight spine sections, in order.
 EXPECTED_SECTIONS = [
     "Setup",
     "Process",
-    "Commands",
     "Resume rule",
     "New system",
     "Update an existing system",
@@ -49,18 +50,17 @@ BANNED_STRINGS = [
     "edcopilot" + "_customization" + "_generator",
 ]
 
-COMMAND_RE = re.compile(
-    r"`edcg\.py ([a-z][a-z-]*)"
-    r"(?: (add|remove|start|status|review|finalize|abort))?`"
-)
+COMMAND_TOKEN_RE = re.compile(r"edcg\.py\s+([a-z][a-z-]*)(?:\s+([a-z][a-z-]*))?")
+# Nested groups whose second token is a subcommand, not a flag argument.
+SUBCOMMAND_GROUPS = {"branch", "markdb"}
+STEP_RE = re.compile(r"^\d+\.\s+")
+SECTION_RE = re.compile(r"^#{1,6} ")
+BACKTICK_SPAN_RE = re.compile(r"`([^`\n]*)`")
 REFERENCE_LINK_RE = re.compile(r"\]\((references/[a-z-]+\.md)\)")
-# Looser than COMMAND_RE: a process line may put flags between the command and
-# its closing backtick, or carry two commands.
-DOCUMENTED_LINE_RE = re.compile(
-    r"edcg\.py ([a-z][a-z-]*)"
-    r"(?: (add|remove|start|status|review|finalize|abort))?"
-)
 FLAG_RE = re.compile(r"--[a-z][a-z-]*")
+# Commands the skill deliberately leaves to `--help`: they belong to no
+# workflow step, so no prose document has a reason to spell them out.
+HELP_ONLY_COMMANDS = {"version"}
 
 
 def _unquote(value: str) -> str:
@@ -116,21 +116,219 @@ def _registered_commands() -> set[str]:
     return commands
 
 
-def _documented_commands(body: str) -> set[str]:
+def _normalised(text: str) -> str:
+    """Prose wraps command forms across lines; match on single spaces."""
+    return " ".join(text.split())
+
+
+def _process_steps(body: list[str]) -> list[str]:
+    """The numbered step blocks of ``## Process``, continuation lines included.
+
+    A step starts at a line matching ``^\\d+\\. ``; the wrapped prose that
+    follows it (such as step 2's second command) belongs to that step. The
+    preamble before step 1 is not a step and is skipped.
+    """
+    text = "\n".join(body)
+    start = text.find("## Process")
+    assert start != -1, "SKILL.md has no ## Process section"
+    end = text.find("\n## Resume rule", start)
+    assert end != -1, "## Process is not followed by ## Resume rule"
+    steps: list[list[str]] = []
+    for line in text[start:end].splitlines():
+        if STEP_RE.match(line):
+            steps.append([line])
+        elif steps and line.strip():
+            steps[-1].append(line)
+    assert steps, "## Process has no numbered steps"
+    return [_normalised("\n".join(block)) for block in steps]
+
+
+@functools.lru_cache(maxsize=None)
+def _group_subcommands(group: str) -> frozenset[str]:
+    """The subcommand names the parser registers under ``group``."""
+    from edcg.cli import build_parser
+
+    top = [
+        action
+        for action in build_parser()._actions
+        if isinstance(action, argparse._SubParsersAction)
+    ][0].choices
+    nested = [
+        action
+        for action in top[group]._actions
+        if isinstance(action, argparse._SubParsersAction)
+    ][-1].choices
+    return frozenset(nested)
+
+
+def _command_tokens(base: str, second: str | None) -> list[str]:
+    """``["markdb", "add"]`` for a registered subcommand, else ``["markdb"]``.
+
+    Bounding the second token to the registered set keeps prose words out:
+    ``edcg.py branch start`` is a command, ``edcg.py branch and ...`` is not.
+    """
+    if base in SUBCOMMAND_GROUPS and second in _group_subcommands(base):
+        return [base, second]
+    return [base]
+
+
+def _command_name(base: str, second: str | None) -> str:
+    """``branch start`` for a registered subcommand, else ``audit``."""
+    return " ".join(_command_tokens(base, second))
+
+
+def _documented_commands(body: list[str]) -> set[str]:
+    """The commands the Process steps name inline, e.g. ``markdb add``."""
     found = set()
-    for match in COMMAND_RE.finditer(body):
-        command = match.group(1)
-        if match.group(2):
-            command = f"{command} {match.group(2)}"
-        found.add(command)
+    for step in _process_steps(body):
+        for base, second in COMMAND_TOKEN_RE.findall(step):
+            found.add(_command_name(base, second))
     return found
 
 
-def _command_tokens(match: re.Match) -> list[str]:
-    tokens = [match.group(1)]
-    if match.group(2):
-        tokens.append(match.group(2))
-    return tokens
+def _mention_from_span(content: str) -> list[str] | None:
+    """Command tokens when an inline span names one, else None.
+
+    Handles both ``edcg.py markdb add`` and a bare backticked ``init``. Spans
+    quoting another tool (``git log -1 --oneline``) and ordinary prose
+    (``systems/``, ``UPDATEDB``) return None.
+    """
+    text = content.strip()
+    match = COMMAND_TOKEN_RE.fullmatch(text)
+    if match:
+        return _command_tokens(match.group(1), match.group(2))
+    words = text.split()
+    if not 1 <= len(words) <= 2:
+        return None
+    if not all(re.fullmatch(r"[a-z][a-z-]*", word) for word in words):
+        return None
+    tokens = _command_tokens(words[0], words[1] if len(words) == 2 else None)
+    return tokens if " ".join(tokens) in _registered_commands() else None
+
+
+def _find_span(spans: list[re.Match], position: int) -> int | None:
+    for index, span in enumerate(spans):
+        if span.start() <= position < span.end():
+            return index
+    return None
+
+
+def _line_events(
+    line: str,
+) -> tuple[list[tuple[int, str, object, int | None]], list[re.Match]]:
+    """Mentions and flags on one line, in reading order.
+
+    Each event is ``(position, kind, payload, span index)``; ``kind`` is
+    ``"mention"`` (command tokens) or ``"flag"`` (the flag string).
+    """
+    spans = list(BACKTICK_SPAN_RE.finditer(line))
+    events: list[tuple[int, str, object, int | None]] = []
+    seen_spans: set[int] = set()
+
+    for match in COMMAND_TOKEN_RE.finditer(line):
+        tokens = _command_tokens(match.group(1), match.group(2))
+        index = _find_span(spans, match.start())
+        if index is None:
+            events.append((match.start(), "mention", tokens, None))
+        elif index not in seen_spans:
+            seen_spans.add(index)
+            events.append((spans[index].start(), "mention", tokens, index))
+
+    for index, span in enumerate(spans):
+        if index in seen_spans:
+            continue
+        tokens = _mention_from_span(span.group(1))
+        if tokens is not None:
+            events.append((span.start(), "mention", tokens, index))
+
+    for match in FLAG_RE.finditer(line):
+        events.append(
+            (match.start(), "flag", match.group(0), _find_span(spans, match.start()))
+        )
+
+    events.sort(key=lambda event: event[0])
+    return events, spans
+
+
+def _flag_pairs_in(text: str) -> list[tuple[list[str], str]]:
+    """Every (command tokens, flag) pair one markdown document documents.
+
+    A flag belongs to the nearest command before it. Inside backticks it only
+    counts when it shares the span with that command, so a separate
+    ``git log -1 --oneline`` is never read as an edcg flag; a flag quoted on
+    its own (``--since``) belongs to the command the surrounding section names.
+    """
+    pairs: list[tuple[list[str], str]] = []
+    current: list[str] | None = None
+
+    for line in text.splitlines():
+        if SECTION_RE.match(line):
+            current = None
+            continue
+        events, spans = _line_events(line)
+        span_mentions: dict[int, list[str]] = {}
+
+        for _, kind, payload, index in events:
+            if kind == "mention":
+                current = list(payload)  # type: ignore[arg-type]
+                if index is not None:
+                    span_mentions[index] = list(payload)  # type: ignore[arg-type]
+                continue
+
+            flag = str(payload)
+            if index is None:
+                owner = current
+            elif index in span_mentions:
+                owner = span_mentions[index]
+            elif FLAG_RE.sub("", spans[index].group(1)).strip():
+                # Another tool's span, e.g. `git log -1 --oneline`.
+                owner = None
+            else:
+                owner = current
+            if owner is not None:
+                pairs.append((list(owner), flag))
+
+    return pairs
+
+
+def _documented_flags() -> list[tuple[list[str], str]]:
+    """Every documented flag with the command that must accept it.
+
+    Scans SKILL.md and the references, so the flags the deleted table used to
+    own (``--no-git``, ``--since``, ``--merge``, ``--push``, ``--confirm``)
+    stay checked.
+    """
+    texts = [SKILL_MD.read_text(encoding="utf-8")]
+    texts += [
+        path.read_text(encoding="utf-8") for path in sorted(REFERENCES.glob("*.md"))
+    ]
+    pairs: list[tuple[list[str], str]] = []
+    seen: set[tuple[tuple[str, ...], str]] = set()
+    for text in texts:
+        for tokens, flag in _flag_pairs_in(text):
+            key = (tuple(tokens), flag)
+            if key not in seen:
+                seen.add(key)
+                pairs.append((tokens, flag))
+    return pairs
+
+
+def _documented_anywhere() -> set[str]:
+    """Every command named in SKILL.md or a reference document.
+
+    The deleted Commands table was the only place that listed the whole
+    surface. Now the Process steps, Setup and the references together name it,
+    so coverage is checked across the skill's prose rather than one section.
+    """
+    texts = [SKILL_MD.read_text(encoding="utf-8")]
+    texts += [
+        path.read_text(encoding="utf-8") for path in sorted(REFERENCES.glob("*.md"))
+    ]
+    found: set[str] = set()
+    for text in texts:
+        for base, second in COMMAND_TOKEN_RE.findall(_normalised(text)):
+            found.add(_command_name(base, second))
+    return found
 
 
 def _command_parser(tokens: list[str]) -> argparse.ArgumentParser:
@@ -207,7 +405,7 @@ class TestBodyShape:
         _, body = _body()
         assert len(body) < 500, f"SKILL.md body is {len(body)} lines"
 
-    def test_body_has_the_nine_spine_sections_in_order(self):
+    def test_body_has_the_eight_spine_sections_in_order(self):
         _, body = _body()
         headings = [
             line[3:].strip()
@@ -286,7 +484,8 @@ class TestBodyShape:
 
     def test_gate_state_is_derived_from_the_repository(self):
         _, body = _body()
-        text = "\n".join(body)
+        # Prose wraps `edcg.py branch status` across a line break.
+        text = " ".join(" ".join(body).split())
         lowered = text.lower()
         assert "edcg.py branch status" in text
         assert "edcg.py get-content" in text
@@ -309,58 +508,54 @@ class TestBodyShape:
 
 
 class TestCommandList:
-    """The documented command list and the parser must not drift apart."""
+    """The commands the Process steps name and the parser must not drift apart."""
 
     def test_every_documented_command_is_registered(self):
         _, body = _body()
-        documented = _documented_commands("\n".join(body))
-        assert documented, "SKILL.md documents no edcg.py commands"
-        assert documented == _registered_commands()
+        documented = _documented_commands(body)
+        assert documented, "the ## Process steps name no edcg.py commands"
+        invented = documented - _registered_commands()
+        assert not invented, f"Process steps invent commands: {sorted(invented)}"
 
-    def test_command_table_has_no_invented_commands(self):
-        _, body = _body()
-        documented = _documented_commands("\n".join(body))
-        extra = documented - _registered_commands()
-        assert not extra, f"SKILL.md invents commands: {sorted(extra)}"
+    def test_no_skill_document_invents_a_command(self):
+        """The old table policed this; the prose across the skill now does."""
+        invented = _documented_anywhere() - _registered_commands()
+        assert not invented, f"skill documents invent commands: {sorted(invented)}"
 
     def test_every_registered_command_is_documented(self):
-        _, body = _body()
-        documented = _documented_commands("\n".join(body))
-        missing = _registered_commands() - documented
-        assert not missing, f"SKILL.md omits commands: {sorted(missing)}"
+        """No registered command is invisible: prose names it, or --help does.
+
+        The Process steps carry the workflow commands; Setup names `doctor`
+        and `init`, and the references carry the branch lifecycle. Only
+        `version` is left to `--help` (see HELP_ONLY_COMMANDS).
+        """
+        documented = _documented_anywhere()
+        missing = _registered_commands() - documented - HELP_ONLY_COMMANDS
+        assert not missing, f"no skill document names these commands: {sorted(missing)}"
 
     def test_documented_flags_are_accepted_by_their_command(self):
         """A documented flag that the parser rejects is argument-form drift."""
         from edcg.cli import build_parser
 
-        _, body = _body()
         top = build_parser()
-        checked = 0
-        for line in body:
-            match = DOCUMENTED_LINE_RE.search(line)
-            if not match:
-                continue
-            tokens = _command_tokens(match)
-            parser = _command_parser(tokens)
-            argv = list(tokens)
-            # A line may also invoke a non-edcg command; only the edcg command's
-            # flags are under test.
-            subject = line[: line.find("`git ")] if "`git " in line else line
-            for flag in FLAG_RE.findall(subject):
-                action = next(
-                    (a for a in parser._actions if flag in a.option_strings),
-                    None,
-                )
-                assert action is not None, (
-                    f"{' '.join(tokens)} documents unknown flag {flag}: {line}"
-                )
-                argv.append(flag)
-                if action.nargs != 0:
-                    argv.append("value")
-                checked += 1
-            # An unregistered flag makes argparse exit 2.
-            top.parse_args(argv)
-        assert checked >= 8, f"only checked {checked} documented flags"
+        pairs = _documented_flags()
+
+        # The inventory spans SKILL.md and the references, so the bound catches
+        # an extractor that stops finding flags; it does not pin the vocabulary.
+        assert len(pairs) >= 7, f"only {len(pairs)} documented flags found"
+
+        for tokens, flag in pairs:
+            # The flag may live on the subcommand's own parser or, for a
+            # genuinely global flag, on the root parser.
+            accepted = {
+                option
+                for parser in (top, _command_parser(tokens))
+                for action in parser._actions
+                for option in action.option_strings
+            }
+            assert flag in accepted, (
+                f"{' '.join(tokens)} does not accept the documented flag {flag}"
+            )
 
     @pytest.mark.parametrize(
         "argv",
@@ -381,7 +576,7 @@ class TestCommandList:
         ],
     )
     def test_representative_argument_forms_parse(self, argv):
-        """The flags the docs tell the agent to pass must parse as written."""
+        """Argument forms the prose and `--help` show must parse as written."""
         from edcg.cli import build_parser
 
         build_parser().parse_args(argv)
@@ -419,9 +614,6 @@ def test_skill_md_has_numbered_process():
     assert "## Process" in text, "SKILL.md has no ## Process section"
     assert lowered.index("## setup") < text.index("## Process"), (
         "## Process must follow ## Setup"
-    )
-    assert text.index("## Process") < text.index("## Commands"), (
-        "## Process must precede ## Commands"
     )
 
     for label in (
