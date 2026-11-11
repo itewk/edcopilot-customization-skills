@@ -86,6 +86,8 @@ Ask one phase at a time and wait for the answers. Do not merge phases.
             default) and that root is a git repository; a `--no-git` bootstrap
             means no commit here.
       - [ ] One commit, subject `edcg: scaffold <system> — <summary>` (em dash).
+      - [ ] In the content repository: `systems/all.rules.toml` is tracked and
+            present at HEAD (it landed with the definition commit).
       - [ ] `git status` in the content repository is clean afterwards.
 
 ## C. Write and stage the content
@@ -113,8 +115,6 @@ only when it is a repository.
       - [ ] One commit in the runtime repository, subject
             `edcg: content <system>`.
       - [ ] The block carries its provenance marker, and the file uses CRLF.
-      - [ ] In the content repository: `systems/all.rules.toml` is tracked and
-            present at HEAD (it landed with the definition commit).
 - [ ] Run `edcg.py markdb add` with the tags to stage.
       - [ ] One commit in the runtime repository, subject
             `edcg: markdb add <n> tag(s)`.
