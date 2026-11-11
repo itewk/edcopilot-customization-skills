@@ -15,7 +15,7 @@ SKILL_DIR = (
     / "edcopilot-system-content"
 )
 
-IDENTITY_RE = re.compile(r"ii42|skyrunner42|skyrunner", re.IGNORECASE)
+IDENTITY_RE = re.compile(r"ii-?42|skyrunner42|skyrunner", re.IGNORECASE)
 FIRST_PERSON_RE = re.compile(r"\bI\b|\bmy\b|\bI'm\b")
 
 

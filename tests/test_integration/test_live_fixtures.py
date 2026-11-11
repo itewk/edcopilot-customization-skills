@@ -390,7 +390,7 @@ def test_live_custom_file_roundtrip(live_custom_file: Path) -> None:
         [
             f"{live_custom_file.name}: {len(parsed.lines)} line(s), "
             f"{len(parsed.provenance)} provenance marker(s), {len(parsed.tags)} tag(s), "
-            f"{parsed.line_ending.upper()}"
+            f"{parsed.line_ending.upper() if parsed.line_ending is not None else 'no line ending'}"
             f"{' + BOM' if parsed.bom else ''} - byte-exact",
             f"self-replaced one phrase under {tag_line!r}: {counts}",
         ],

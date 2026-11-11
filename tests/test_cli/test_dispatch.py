@@ -453,6 +453,23 @@ def test_markdb_remove_warns_on_a_tag_that_matched_nothing(
     assert "matched no authored content" in captured.err
 
 
+def test_markdb_add_with_no_custom_file_does_not_warn_per_tag(
+    monkeypatch, tmp_path, capsys
+):
+    """A missing custom file is not reported as a per-tag mismatch."""
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(tmp_path))
+    monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(runtime))
+    monkeypatch.setenv("EDCG_AUTO_COMMIT", "false")
+
+    tag = "@SystemGreeting<~>Test System"
+    assert cli.main(["markdb", "add", "--tag", tag]) == 0
+    captured = capsys.readouterr()
+    assert json.loads(captured.out) == {"modified_tags": [], "commit_hashes": []}
+    assert "matched no authored content" not in captured.err
+
+
 def test_rewrite_tag_replaces_a_line(monkeypatch, tmp_path, capsys):
     runtime = tmp_path / "runtime"
     runtime.mkdir()

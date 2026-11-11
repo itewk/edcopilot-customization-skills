@@ -956,7 +956,7 @@ def rewrite_tag_lines(
 
     Args:
         lines: The file's lines (LF, no trailing newline element).
-        tag: The exact tag line, e.g. "@StationChatter<~>Sys<~>Station (ii-42)".
+        tag: The exact tag line, e.g. "@StationChatter<~>Sys<~>Example Station (AB-1)".
         remove: Exact lines to delete; each entry removes one occurrence.
         replace: Exact line -> replacement line.
         add: Lines to append to the latest occurrence's body.
