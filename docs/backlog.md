@@ -25,6 +25,18 @@ Items marked **(gate)** must pass before tagging `v1.0.0`.
    `npx skills add <owner>/edcopilot-customization-skills` followed by
    `npx skills update` in at least one real client. Only then tag `v1.0.0`.
 
+## Next small changes (approved, no spec/plan needed)
+
+- **Help as the interface doc (human decision).** Drop the 22-row command
+  table from SKILL.md (the Process steps name every command inline); upgrade
+  `cli.py` so every flag has help text and key subcommands carry examples and
+  documented exit codes in `--help` (the agentskills using-scripts guide:
+  "`--help` output is the primary way an agent learns your script's
+  interface"). Rewire the command-drift tests to parse commands from the
+  Process steps instead of the table. Backlog additions from the same guide:
+  dry-run flags for stateful commands, an output-size policy for data
+  commands.
+
 ## Product correctness
 
 4. **Journal directory discovery is hard-coded and silent when it misses.**
@@ -51,10 +63,10 @@ Items marked **(gate)** must pass before tagging `v1.0.0`.
    unmatched-tag warning is suppressed when the file is absent, leaving only
    empty `modified_tags`/`commit_hashes` in JSON. Sketch: a clear error or
    warning naming the missing path (and the resolved EDCoPilot root).
-7. **`get_template` lacks a path-containment guard.** Template names are
-   internal today, but the function reads `assets / name` with no
-   `resolve()`/`is_relative_to` check. Sketch: resolve and confine to the
-   assets directory, with a test for `../` input.
+7. **`get_template` containment guard — RESOLVED.** `get_template` and the
+   `get-template` command were removed (commit `refactor: drop the get-template
+   pass-through command`); the agent reads
+   `assets/dossier-template.md` directly, so the guard is moot.
 8. **Exit-code semantics at the edges.** `check-logs` exits 0 when the
    EDCoPilot root is unresolvable (`ok:false` only in JSON); `branch finalize
    --push` exits 0 when the push is refused; `push_status` reads `"failed"` when
@@ -140,7 +152,20 @@ Items marked **(gate)** must pass before tagging `v1.0.0`.
     second skill arrives, make the script-sharing decision (shared library,
     promoted service, or stamping build) — the layering was designed for it.
     The founding spec's "Adding a second skill" section is the starting point.
-30. **Promote the facts layer to a standalone capability** only if a second
+30. **Script / skill separation — planned, full spec/plan route (human
+    decision).** Inside the skill folder, the boundary is *what the code needs
+    to run* vs *what the agent needs to read*:
+    - Move `base.toml`, `build_types.toml`, `raven.toml` from `assets/` into
+      package data under `scripts/edcg/rules/`, loaded module-relative — no
+      `parents[3]` counting, no skill-layout coupling. Scripts become
+      self-contained.
+    - `assets/` becomes agent-facing only (`dossier-template.md`,
+      `all.rules.toml.example`).
+    - `init` creates only the skeleton (git, config file, `systems/`). **The
+      agent** copies `assets/all.rules.toml.example` → `systems/all.rules.toml`
+      (human decision), and the setup flow gains a review step: walk the user
+      through the house rules to modify/add/remove before any content work.
+31. **Promote the facts layer to a standalone capability** only if a second
     consumer appears (e.g. another skill or project needs Raven/journal
     facts). Do not build it speculatively.
 
