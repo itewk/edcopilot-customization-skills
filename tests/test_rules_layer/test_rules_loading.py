@@ -703,7 +703,7 @@ class TestTemplateLoading:
     def test_get_template_dossier_spine(self):
         """Test that the dossier template keeps its section spine."""
         template = engine.get_template("dossier-template.md")
-        assert template.startswith("# <system name> - system dossier")
+        assert template.startswith("# <system name> \u2014 system dossier")
         expected_headings = (
             "## 1. Identity and canon",
             "## 2. Lore and theme",
