@@ -50,6 +50,26 @@ below are advisory, and the agent's discipline carries them.
    markers. Ask the user to close it, and to restart it when the marker cycle
    calls for a restart.
 
+## Process
+
+Run these in order. Every step applies to both modes; where the new-system and update paths differ, the step says so.
+
+1. **Resume.** Run `edcg.py audit --system <name>` (or `edcg.py update-scan` when facts may have moved). Read the repository state: `systems/`, the custom file, `UPDATEDB` markers, git log.
+2. **Gather facts.** New: `edcg.py gather-facts --system <name>` (or without a name when Raven has no entry). Update: `edcg.py update-scan` and read this system's delta entry.
+3. **Interview.** New: the six phases in [`references/new-system-interview.md`](references/new-system-interview.md). Update: the seven phases in [`references/update-interview.md`](references/update-interview.md). One phase at a time; wait for answers.
+4. **Validate the definition.** `edcg.py validate-definition` (JSON stdin: dossier, rules, and the house rules when present). Fix every `error` and repeat until `passed` is true. Warnings are understood, not ignored.
+5. **Save the definition.** `edcg.py save-definition` (JSON stdin, including `commit_co_author`). Verify the returned commit hash with `git log -1 --oneline`.
+6. **Preview gate.** Offer a representative sample (about 8-10 lines) before the full generation; on acceptance show it, take at most one round of changes, then continue.
+7. **Writing brief.** `edcg.py writing-brief-data --system <name>` supplies the exact tag lines, bounds and voices. Do not invent tag lines.
+8. **Write the block.** Compose the content from the brief. Update mode: first `edcg.py get-content --system <name>` to read the exact existing lines, then `edcg.py rewrite-tag` for every removal, replacement or addition (staged, not committed).
+9. **Validate the content.** `edcg.py validate-content` (JSON stdin). Fix every `error` and repeat until `passed` is true; present the returned rule table.
+10. **Write the content.** Close EDCoPilot first. `edcg.py write-content` (JSON stdin, including `commit_co_author`) appends the block with provenance and commits, including any rewrites staged in step 8.
+11. **Review gate.** Ask the user whether to mark for update now or to review first (static: read the file or diff; live: restart EDCoPilot and listen). Record the choice in the conversation and follow it.
+12. **Mark for update.** `edcg.py markdb add --tag <tag> ...` (or JSON `tags`). One commit.
+13. **Restart.** Ask the user to restart EDCoPilot and confirm when done.
+14. **Check the logs.** `edcg.py check-logs --system <name>`. Show the per-tag report. A failed tag is the user's decision: fix and repeat the cycle, or accept.
+15. **Clear the markers.** `edcg.py markdb remove --tag <tag> ...`. One commit. The cycle is complete: exactly three runtime commits (content, marker add, marker remove).
+
 ## Commands
 
 Run every command from the content root as
