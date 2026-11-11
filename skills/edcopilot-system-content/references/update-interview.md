@@ -130,7 +130,7 @@ Begin by opening the existing `systems/<slug>.md` and
 the `writing-brief-data` output. Read both before editing. Update those files
 **in place** rather than regenerating them, so the corrections log and the git
 history survive. Then produce the TWO UPDATED artifacts from Phases 1-4. Read
-the template first with `edcg.py get-template`.
+the template first with [`../assets/dossier-template.md`](../assets/dossier-template.md).
 
 ### Artifact 1: UPDATED System Dossier (Markdown)
 

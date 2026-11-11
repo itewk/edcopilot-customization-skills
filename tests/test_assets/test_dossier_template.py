@@ -14,8 +14,7 @@ guards its neutrality, so there is nothing to assert here.
 """
 
 import pytest
-
-from edcg.rules.engine import get_template
+from pathlib import Path
 
 ASSET = "dossier-template.md"
 
@@ -47,7 +46,8 @@ class TestDossierTemplateAsset:
 
     def test_dossier_template_has_all_sections(self):
         """Old test: template contains all 9 spine sections (static asset)."""
-        template_str = get_template(ASSET)
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
         expected_sections = [
             "Identity and canon",
             "Lore and theme",
@@ -71,7 +71,8 @@ class TestDossierTemplateAsset:
         renders the tone-rule loop at zero iterations, so the port asserts the
         placeholders and the empty list structure.
         """
-        template_str = get_template(ASSET)
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
         assert "<system name>" in template_str
         assert "<architect>" in template_str
         assert "<colonising group>" in template_str
@@ -87,7 +88,8 @@ class TestDossierTemplateAsset:
 
     def test_dossier_template_with_bodies(self):
         """Old test: body map shows bodies. Static port: header, zero rows."""
-        template_str = get_template(ASSET)
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
         body_map = _section(template_str, "### Body map", "> **<body_map_notes_title>**")
         header = "| Body | Type | Role in the theme |"
         _assert_table_header(body_map, header)
@@ -97,7 +99,8 @@ class TestDossierTemplateAsset:
 
     def test_dossier_template_with_bridge_systems(self):
         """Old test: bridge systems section. Static port: guidance, zero rows."""
-        template_str = get_template(ASSET)
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
         bridge = _section(
             template_str,
             "| System | Distance from here | Contents | Attachment |",
@@ -111,7 +114,8 @@ class TestDossierTemplateAsset:
 
     def test_dossier_template_with_body_map_notes(self):
         """Old test: body map notes. Static port: title placeholder, zero notes."""
-        template_str = get_template(ASSET)
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
         notes = _section(
             template_str, "> **<body_map_notes_title>**", "### The bridge systems"
         )
@@ -127,7 +131,8 @@ class TestDossierTemplateAsset:
 
     def test_dossier_template_with_stations(self):
         """Old test: station table. Static port: header, zero rows."""
-        template_str = get_template(ASSET)
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
         stations = _section(
             template_str,
             "| Station | Where it is | Evidence |",
@@ -140,7 +145,8 @@ class TestDossierTemplateAsset:
 
     def test_dossier_template_with_no_pad_sites(self):
         """Old test: no-pad table. Static port: header, zero rows."""
-        template_str = get_template(ASSET)
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
         no_pad = _section(
             template_str, "The sites here with no pads", "### Complete (<complete_count>)"
         )
@@ -152,7 +158,8 @@ class TestDossierTemplateAsset:
 
     def test_dossier_template_with_site_lists(self):
         """Old test: four site tables. Static port: four headers, zero rows."""
-        template_str = get_template(ASSET)
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
         header = "| Site | Build type | Body |"
         sections = [
             (
@@ -181,7 +188,8 @@ class TestDossierTemplateAsset:
 
     def test_dossier_template_with_corrections(self):
         """Old test: corrections log. Static port: header, zero rows."""
-        template_str = get_template(ASSET)
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
         corrections = _section(
             template_str,
             "## 5. Corrections log (do not reintroduce these)",
@@ -201,7 +209,8 @@ class TestDossierTemplateAsset:
         ``parentheses: .``. There is no ``<unresolved_sites>`` token; asserting
         one would assert a render that does not exist.
         """
-        template_str = get_template(ASSET)
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
         section_6 = _section(template_str, "## 6. Site list maintenance", "## 7. Coverage")
         assert "names use square brackets rather than\nparentheses: ." in section_6
         assert "<unresolved_sites>" not in template_str
@@ -211,7 +220,8 @@ class TestDossierTemplateAsset:
 
     def test_dossier_template_with_covered_stations(self):
         """Old test: covered stations list. Static port: guidance, zero entries."""
-        template_str = get_template(ASSET)
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
         covered = _section(
             template_str, "### Stations covered", "### Where the remaining themes are heard"
         )
@@ -222,7 +232,8 @@ class TestDossierTemplateAsset:
 
     def test_dossier_template_with_voices(self):
         """Old test: voices by category. Static port: heading, zero entries."""
-        template_str = get_template(ASSET)
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
         voices = _section(template_str, "### Voices used", "### Addressing the player")
         assert "### Voices used" in voices
         assert "<!-- Voices by category would be populated here -->" in voices
@@ -232,7 +243,8 @@ class TestDossierTemplateAsset:
 
     def test_dossier_template_with_open_threads(self):
         """Old test: open threads. Static port: heading, zero entries."""
-        template_str = get_template(ASSET)
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
         threads = template_str[template_str.index("## 9. Open threads (TODO)"):]
         assert "<!-- Open threads would be populated here -->" in threads
         assert "Thread 1" not in threads
@@ -246,7 +258,8 @@ class TestDossierTemplateAsset:
         asserts the scaffold still supplies every scalar the old minimal context
         had to provide, which is what the raising test protected.
         """
-        template_str = get_template(ASSET)
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
         for placeholder in (
             "<system name>",
             "<architect>",
@@ -269,7 +282,8 @@ class TestDossierTemplateAsset:
         design change; only the static dossier asset remains to check here, and
         it must contain no Jinja syntax at all.
         """
-        template_str = get_template(ASSET)
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
         assert template_str
         assert "{{" not in template_str
         assert "}}" not in template_str
@@ -279,7 +293,8 @@ class TestDossierTemplateAsset:
 
     def test_dossier_template_asset_has_no_jinja_syntax(self):
         """Test the asset contains no Jinja or pseudo-directive residue."""
-        template_str = get_template(ASSET)
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
         assert "{{" not in template_str
         assert "{%" not in template_str
         assert "<for" not in template_str
@@ -292,7 +307,8 @@ class TestDossierTemplateAsset:
 
     def test_dossier_template_asset_has_placeholder_values(self):
         """Test dossier template asset has placeholder values."""
-        template_str = get_template(ASSET)
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
         for placeholder in (
             "<system name>",
             "<architect>",
@@ -314,7 +330,8 @@ class TestDossierTemplateAsset:
 
     def test_dossier_template_asset_has_guidance_text(self):
         """Test dossier template asset has guidance text intact."""
-        template_str = get_template(ASSET)
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
         assert "Section 4 is the census" in template_str
         assert "Two NATO words = placeholder name" in template_str
         assert "The player is addressed by token everywhere" in template_str
@@ -324,7 +341,8 @@ class TestDossierTemplateAsset:
 
     def test_dossier_template_asset_has_no_mojibake(self):
         """Test dossier template asset has no mojibake and keeps real em dashes."""
-        template_str = get_template(ASSET)
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
         assert "\uFFFD" not in template_str
         for mojibake in ("ΓÇö", "┬╖", "Γê⌐┐╜"):
             assert mojibake not in template_str, f"Mojibake sequence present: {mojibake}"
@@ -332,14 +350,16 @@ class TestDossierTemplateAsset:
 
     def test_dossier_template_asset_has_em_dash(self):
         """Test dossier template asset uses U+2014 in the H1."""
-        template_str = get_template(ASSET)
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
         first_line = template_str.splitlines()[0]
         assert first_line == "# <system name> \u2014 system dossier"
         assert "# <system name> - system dossier" not in template_str
 
     def test_dossier_template_asset_has_zero_iteration_structures(self):
         """Test every zero-iteration table keeps its header and has no rows."""
-        template_str = get_template(ASSET)
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
         for header in (
             "| Fact | Value |",
             "| Body | Type | Role in the theme |",
@@ -360,7 +380,8 @@ class TestDossierTemplateAsset:
 
     def test_dossier_template_asset_has_correct_section_6_content(self):
         """Test section 6 carries the source's unresolved-site text, once."""
-        template_str = get_template(ASSET)
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
         section_6 = _section(template_str, "## 6. Site list maintenance", "## 7. Coverage")
         assert "They look like hand-entered duplicates and are not part of the plan" in section_6
         assert "parentheses: ." in section_6
@@ -369,7 +390,8 @@ class TestDossierTemplateAsset:
 
     def test_dossier_template_asset_has_correct_section_7_broadcast(self):
         """Test section 7 keeps the true zero-iteration broadcast/in-progress forms."""
-        template_str = get_template(ASSET)
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
         section_7 = _section(template_str, "## 7. Coverage", "## 8. Writing rules")
         assert "and it mixes announcements," in section_7
         assert "monologues and multi-character conversations: ." in section_7

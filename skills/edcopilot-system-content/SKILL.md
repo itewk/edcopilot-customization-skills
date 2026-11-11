@@ -88,7 +88,6 @@ success, `1` a check failed, `2` usage error.
 | `edcg.py doctor` | Check Python, packages, the git binary, git identity and both roots |
 | `edcg.py init` | Scaffold a blank content repository (`--no-git` to skip git) |
 | `edcg.py gather-facts` | One system's facts as JSON (`--system <name>`) |
-| `edcg.py get-template` | Print the dossier template validation enforces |
 | `edcg.py validate-definition` | Validate a dossier and rules pair (JSON stdin) |
 | `edcg.py save-definition` | Save a validated pair and commit (JSON stdin) |
 | `edcg.py writing-brief-data` | Exact tag lines, bounds and voices (`--system <name>`) |
@@ -128,6 +127,8 @@ plot threads, artifacts (dossier and rules TOML), the validation loop, and
 save. Ask once, before the artifacts, how many examples each section should
 keep, then write `[content.bounds]` from the answer. Full text:
 [`references/new-system-interview.md`](references/new-system-interview.md).
+
+The dossier structure is [`assets/dossier-template.md`](assets/dossier-template.md) — the structure validation enforces.
 
 ## Update an existing system
 

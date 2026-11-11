@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 
 import pytest
 
 from edcg import cli
-from edcg.rules.engine import get_template
 
 
 @pytest.fixture(autouse=True)
@@ -41,9 +41,9 @@ def test_init_scaffolds_a_blank_root_without_git(tmp_path, capsys):
     assert (tmp_path / cli.CONFIG_FILENAME).is_file()
     assert (tmp_path / "systems").is_dir()
     example = tmp_path / "systems" / "all.rules.toml.example"
-    assert example.read_text(encoding="utf-8") == get_template(
-        "all.rules.toml.example"
-    )
+    assert example.read_text(encoding="utf-8") == (
+        Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / "all.rules.toml.example"
+    ).read_text(encoding="utf-8")
     assert set(data["created"]) == {
         cli.CONFIG_FILENAME,
         "systems/",
