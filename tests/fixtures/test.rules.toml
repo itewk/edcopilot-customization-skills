@@ -1,0 +1,4 @@
+[system]
+names = ["Test System"]
+dossier = "test.md"
+voices = ["Foreman", "Researcher"]

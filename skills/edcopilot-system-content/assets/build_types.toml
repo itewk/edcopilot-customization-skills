@@ -1,0 +1,324 @@
+# The colonisation facility catalogue, as Raven Colonial lists it.
+#
+# Source: https://ravencolonial.com/#table  (retrieved 2026-10-17)
+# The site pull reads the same data; this is the offline copy the validator
+# uses, so that a rule can be enforced without a network call.
+#
+# The class decides the one thing content cares about: whether a player can
+# land there. The facility name is Raven's label for the build type, kept so a
+# build type can be read back in the game's own terms; nothing reads it.
+#
+#   starport      large pads           landable
+#   outpost       medium or large pad  landable
+#   settlement    small, medium or
+#                 large pads           landable
+#   hub           no pads at all       NOT landable
+#   installation  no pads at all       NOT landable
+#
+# A hub or an installation has no landing pads, so EDCoPilot plays no station
+# greeting, station chatter or station fact for it: that content can never be
+# heard by anybody. Classify by build type, never by the in-game name, because
+# landable stations are named "Hub" and "Installation" too.
+#
+# Raven also carries five unresolved placeholders (Unknown, "Installation?",
+# "Outpost?", "Settlement?", "Facility?"). They are deliberately absent here: a
+# site whose build type is not in this file is a warning, not a pass.
+
+version = 1
+
+[classes.starport]
+# Large Planetary Port
+"aphrodite" = "Large Planetary Port"
+"hera" = "Large Planetary Port"
+"poseidon" = "Large Planetary Port"
+"zeus" = "Large Planetary Port"
+# Orbis Starport
+"apollo" = "Orbis Starport"
+"artemis" = "Orbis Starport"
+# Asteroid Starport
+"asteroid" = "Asteroid Starport"
+# Dodec Starport
+"dodec" = "Dodec Starport"
+"quint_truss" = "Dodec Starport"
+"dec_truss" = "Dodec Starport"
+# Coriolis Starport
+"no_truss" = "Coriolis Starport"
+"dual_truss" = "Coriolis Starport"
+"quad_truss" = "Coriolis Starport"
+# Ocellus Starport
+"ocellus" = "Ocellus Starport"
+
+[classes.outpost]
+# Scientific Surface Outpost
+"ananke" = "Scientific Surface Outpost"
+"antevorta" = "Scientific Surface Outpost"
+"fauna" = "Scientific Surface Outpost"
+"necessitas" = "Scientific Surface Outpost"
+"porrima" = "Scientific Surface Outpost"
+"providentia" = "Scientific Surface Outpost"
+# Civilian Surface Outpost
+"atropos" = "Civilian Surface Outpost"
+"clotho" = "Civilian Surface Outpost"
+"decima" = "Civilian Surface Outpost"
+"hestia" = "Civilian Surface Outpost"
+"lachesis" = "Civilian Surface Outpost"
+"nona" = "Civilian Surface Outpost"
+# Industrial Surface Outpost
+"bia" = "Industrial Surface Outpost"
+"hephaestus" = "Industrial Surface Outpost"
+"mefitis" = "Industrial Surface Outpost"
+"opis" = "Industrial Surface Outpost"
+"ponos" = "Industrial Surface Outpost"
+"tethys" = "Industrial Surface Outpost"
+# Pirate Outpost
+"dysnomia" = "Pirate Outpost"
+# Military Outpost
+"nemesis" = "Military Outpost"
+# Commercial Outpost
+"plutus" = "Commercial Outpost"
+# Scientific Outpost
+"prometheus" = "Scientific Outpost"
+# Civilian Outpost
+"vesta" = "Civilian Outpost"
+# Industrial Outpost
+"vulcan" = "Industrial Outpost"
+
+[classes.settlement]
+# Mining Settlement
+"aerecura" = "Mining Settlement"
+"erebus" = "Mining Settlement"
+"mantus" = "Mining Settlement"
+"orcus" = "Mining Settlement"
+"ourea" = "Mining Settlement"
+# Agriculture Settlement
+"annona" = "Agriculture Settlement"
+"picumnus" = "Agriculture Settlement"
+"ceres" = "Agriculture Settlement"
+"fornax" = "Agriculture Settlement"
+"consus" = "Agriculture Settlement"
+# Bio Settlement
+"chronos" = "Bio Settlement"
+"asteria" = "Bio Settlement"
+"caerus" = "Bio Settlement"
+"pheobe" = "Bio Settlement"
+# Tourist Settlement
+"comus" = "Tourist Settlement"
+"gelos" = "Tourist Settlement"
+"fufluns" = "Tourist Settlement"
+"aergia" = "Tourist Settlement"
+# Industrial Settlement
+"gaea" = "Industrial Settlement"
+"meteope" = "Industrial Settlement"
+"minthe" = "Industrial Settlement"
+"palici" = "Industrial Settlement"
+"fontus" = "Industrial Settlement"
+# Military Settlement
+"minerva" = "Military Settlement"
+"bellona" = "Military Settlement"
+"enyo" = "Military Settlement"
+"polemos" = "Military Settlement"
+"ioke" = "Military Settlement"
+
+[classes.hub]
+# Civilian Hub
+"aegle" = "Civilian Hub"
+# Military Hub
+"alala" = "Military Hub"
+"ares" = "Military Hub"
+# Scientific Hub
+"athena" = "Scientific Hub"
+"caelus" = "Scientific Hub"
+# Industrial Hub
+"eunostus" = "Industrial Hub"
+"molae" = "Industrial Hub"
+"tellus_i" = "Industrial Hub"
+# Outpost Hub
+"io" = "Outpost Hub"
+# High Tech Hub
+"janus" = "High Tech Hub"
+# Refinery Hub
+"silenus" = "Refinery Hub"
+# Extraction Hub
+"tartarus" = "Extraction Hub"
+# Exploration Hub
+"tellus_e" = "Exploration Hub"
+
+[classes.installation]
+# Military Installation
+"alastor" = "Military Installation"
+"vacuna" = "Military Installation"
+# Communication Installation
+"aletheia" = "Communication Installation"
+"pistis" = "Communication Installation"
+"soter" = "Communication Installation"
+# Satellite Installation
+"angelia" = "Satellite Installation"
+"eirene" = "Satellite Installation"
+"hermes" = "Satellite Installation"
+# Pirate Base Installation
+"apate" = "Pirate Base Installation"
+"laverna" = "Pirate Base Installation"
+# Medical Installation
+"asclepius" = "Medical Installation"
+"eupraxia" = "Medical Installation"
+# Research Installation
+"astraeus" = "Research Installation"
+"coeus" = "Research Installation"
+"dione" = "Research Installation"
+"dodona" = "Research Installation"
+# Space Bar Installation
+"bacchus" = "Space Bar Installation"
+"dionysus" = "Space Bar Installation"
+# Space Farm
+"demeter" = "Space Farm"
+# Security Installation
+"dicaeosyne" = "Security Installation"
+"eunomia" = "Security Installation"
+"nomos" = "Security Installation"
+"poena" = "Security Installation"
+# Relay Installation
+"enodia" = "Relay Installation"
+"ichnaea" = "Relay Installation"
+# Mining/Industrial Installation
+"euthenia" = "Mining/Industrial Installation"
+"phorcys" = "Mining/Industrial Installation"
+# Government Installation
+"harmonia" = "Government Installation"
+# Tourist Installation
+"hedone" = "Tourist Installation"
+"opora" = "Tourist Installation"
+"pasithea" = "Tourist Installation"
+
+# Placement: whether the facility stands on a body surface or orbits the body.
+#
+# This is a property of the build type, not of the facility class. Outposts
+# and starports exist in both variants: "Scientific Outpost" orbits while
+# "Scientific Surface Outpost" is on the ground, and "Large Planetary Port"
+# is on the ground while every other starport orbits. Hubs and settlements are
+# surface builds; installations orbit.
+#
+# Source: the orbital flag in Raven Colonial's build table
+# (https://ravencolonial.com/#table, retrieved 2026-10-24).
+
+[placement]
+surface = [
+  # starport
+  "aphrodite",
+  "hera",
+  "poseidon",
+  "zeus",
+  # outpost
+  "ananke",
+  "antevorta",
+  "fauna",
+  "necessitas",
+  "porrima",
+  "providentia",
+  "atropos",
+  "clotho",
+  "decima",
+  "hestia",
+  "lachesis",
+  "nona",
+  "bia",
+  "hephaestus",
+  "mefitis",
+  "opis",
+  "ponos",
+  "tethys",
+  # settlement
+  "aerecura",
+  "erebus",
+  "mantus",
+  "orcus",
+  "ourea",
+  "annona",
+  "picumnus",
+  "ceres",
+  "fornax",
+  "consus",
+  "chronos",
+  "asteria",
+  "caerus",
+  "pheobe",
+  "comus",
+  "gelos",
+  "fufluns",
+  "aergia",
+  "gaea",
+  "meteope",
+  "minthe",
+  "palici",
+  "fontus",
+  "minerva",
+  "bellona",
+  "enyo",
+  "polemos",
+  "ioke",
+  # hub
+  "aegle",
+  "alala",
+  "ares",
+  "athena",
+  "caelus",
+  "eunostus",
+  "molae",
+  "tellus_i",
+  "io",
+  "janus",
+  "silenus",
+  "tartarus",
+  "tellus_e",
+]
+orbital = [
+  # starport
+  "apollo",
+  "artemis",
+  "asteroid",
+  "dodec",
+  "quint_truss",
+  "dec_truss",
+  "no_truss",
+  "dual_truss",
+  "quad_truss",
+  "ocellus",
+  # outpost
+  "dysnomia",
+  "nemesis",
+  "plutus",
+  "prometheus",
+  "vesta",
+  "vulcan",
+  # installation
+  "alastor",
+  "vacuna",
+  "aletheia",
+  "pistis",
+  "soter",
+  "angelia",
+  "eirene",
+  "hermes",
+  "apate",
+  "laverna",
+  "asclepius",
+  "eupraxia",
+  "astraeus",
+  "coeus",
+  "dione",
+  "dodona",
+  "bacchus",
+  "dionysus",
+  "demeter",
+  "dicaeosyne",
+  "eunomia",
+  "nomos",
+  "poena",
+  "enodia",
+  "ichnaea",
+  "euthenia",
+  "phorcys",
+  "harmonia",
+  "hedone",
+  "opora",
+  "pasithea",
+]

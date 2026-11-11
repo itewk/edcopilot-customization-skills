@@ -1,0 +1,19 @@
+# Test house rules (all.rules.toml) - declares filters.banned
+# This mirrors the project's actual all.rules.toml
+
+[rules.filters.banned]
+impl = "rule_filters_banned"
+severity = "error"
+tokens = ["profanity", "flirt", "innuendo", "alcohol"]
+why = """
+Test house rule: no profanity, flirt, innuendo or alcohol in authored content.
+"""
+
+# Override fact_image expected URL
+[rules.content.fact_image]
+expected = "https://elite-dangerous.skyrunner42.xyz/ii42-logo.jpg"
+
+# Override allbusiness thresholds
+[rules.filters.allbusiness]
+warn_below = 2
+warn_below_by_kind = { StationGreeting = 1 }

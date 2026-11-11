@@ -1,4 +1,4 @@
-"""Git operations wrapper for edcopilot-customization-generator.
+"""Git operations wrapper for the EDCoPilot custom speech content skill.
 
 Provides a safe GitRepo class for commit/diff/status operations that handles
 non-repo paths gracefully with warnings instead of exceptions.
