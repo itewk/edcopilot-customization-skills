@@ -122,7 +122,8 @@ def test_entry_point_help_lists_every_subcommand():
     )
     assert result.returncode == 0
     for name in (
-        "doctor", "init", "gather-facts", "get-template", "validate-definition",
+        "doctor", "init", "gather-facts",
+        "validate-definition",
         "save-definition", "writing-brief-data", "validate-content",
         "write-content", "get-content", "update-scan", "rewrite-tag", "markdb",
         "check-logs", "audit", "branch", "version",
@@ -136,7 +137,6 @@ def test_entry_point_help_lists_every_subcommand():
         ["doctor"],
         ["init"],
         ["gather-facts"],
-        ["get-template"],
         ["validate-definition"],
         ["save-definition"],
         ["writing-brief-data"],
@@ -181,13 +181,6 @@ def test_version_prints_the_release_version(capsys):
     # The provenance string written into the custom file stays pinned to the
     # old package version and is deliberately distinct from the release.
     assert VERSION == "0.1.0"
-
-
-def test_get_template_prints_the_dossier_template(capsys):
-    assert cli.main(["get-template"]) == 0
-    out = capsys.readouterr().out
-    assert "## 1." in out
-    assert "{{" not in out
 
 
 def test_validate_definition_prints_json_and_fails_on_errors(capsys):

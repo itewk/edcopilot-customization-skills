@@ -170,22 +170,6 @@ def merge_rules(base: dict[str, Any], house: dict[str, Any], system: dict[str, A
     return merged
 
 
-def get_template(template_name: str) -> str:
-    """Get a template's text from the skill's assets folder.
-
-    Args:
-        template_name: File name inside the assets folder, e.g.
-            "dossier-template.md".
-
-    Returns:
-        The file's text, read as UTF-8.
-
-    Raises:
-        FileNotFoundError: When no such asset exists.
-    """
-    return (_ASSETS_DIR / template_name).read_text(encoding="utf-8")
-
-
 __all__ = [
     "get_base_rules",
     "get_build_types",
@@ -201,5 +185,4 @@ __all__ = [
     "load_system_rules",
     "load_house_rules",
     "merge_rules",
-    "get_template",
 ]

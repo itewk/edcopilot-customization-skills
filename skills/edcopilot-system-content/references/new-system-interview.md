@@ -118,7 +118,7 @@ mystery, social conflict, environmental survival, personal drama.
 ## PHASE 4: PRODUCE ARTIFACTS
 
 Produce the two required artifacts from Phases 1-3. Read the template first with
-`edcg.py get-template`; it is the structure validation enforces.
+[`../assets/dossier-template.md`](../assets/dossier-template.md); it is the structure validation enforces.
 
 ### Section size (minimum and maximum examples)
 

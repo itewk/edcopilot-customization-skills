@@ -1,10 +1,9 @@
 """CLI entry point for the EDCoPilot system-content skill.
 
 Every subcommand is a thin, scriptable wrapper around one function in the
-``edcg`` package. Data subcommands print JSON on stdout; ``get-template`` and
-``version`` print their value directly. Exit codes: 0 success, 1 check
-failure, 2 usage error. The scripts never pause for a gate; they do refuse
-impossible or invalid operations.
+``edcg`` package. Data subcommands print JSON on stdout; ``version`` prints its
+value directly. Exit codes: 0 success, 1 check failure, 2 usage error. The scripts
+never pause for a gate; they do refuse impossible or invalid operations.
 """
 
 from __future__ import annotations
@@ -42,7 +41,6 @@ from edcg.repo.brief import build_update_scan, system_names, writing_brief_data
 from edcg.repo.dossier import save_definition
 from edcg.repo.gitrepo import GitRepo
 from edcg.repo.logs import check_logs, scope_failures
-from edcg.rules.engine import get_template
 from edcg.rules.validation import validate_content, validate_definition
 
 _MAX_STATION_BODIES = 20
@@ -329,8 +327,10 @@ def command_init(args: argparse.Namespace) -> int:
         created.append("systems/")
 
     example = systems_dir / "all.rules.toml.example"
+    # Read the example template from assets directory directly
+    assets_dir = Path(__file__).resolve().parents[2] / "assets"
     example.write_text(
-        get_template("all.rules.toml.example"), encoding="utf-8", newline="\n"
+        (assets_dir / "all.rules.toml.example").read_text(encoding="utf-8"), encoding="utf-8", newline="\n"
     )
     created.append("systems/all.rules.toml.example")
 
@@ -480,9 +480,7 @@ def command_audit(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 
-def command_get_template(args: argparse.Namespace) -> int:
-    print(get_template("dossier-template.md"), end="")
-    return 0
+
 
 
 def command_validate_definition(args: argparse.Namespace) -> int:
@@ -756,10 +754,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     gather_parser.add_argument("--system", help="System name")
 
-    subparsers.add_parser("get-template", help="Print the dossier template")
-
-    subparsers.add_parser(
-        "validate-definition",
+    subparsers.add_parser("validate-definition",
         help="Validate a dossier and rules pair (JSON on stdin)",
     )
     subparsers.add_parser(
@@ -863,7 +858,6 @@ _HANDLERS = {
     "doctor": command_doctor,
     "init": command_init,
     "gather-facts": command_gather_facts,
-    "get-template": command_get_template,
     "validate-definition": command_validate_definition,
     "save-definition": command_save_definition,
     "writing-brief-data": command_writing_brief_data,
