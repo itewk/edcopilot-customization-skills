@@ -293,7 +293,7 @@ class TestWriteContentTool:
         assert after == before
 
     def test_write_content_treats_none_block_as_empty(self, mock_config):
-        """A null content_block from an MCP client means 'commit staged edits'."""
+        """A null content_block from a client means 'commit staged edits'."""
         custom_file = (
             mock_config.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
         )

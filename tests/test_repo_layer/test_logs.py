@@ -3,6 +3,7 @@ from pathlib import Path
 
 from edcg.repo.logs import (
     check_logs, log_launch_time, newest_log_after, parse_log, resolve_logs_dir,
+    scope_failures,
 )
 
 FAILURE = (
@@ -76,3 +77,47 @@ def test_check_logs_clean_is_ok(tmp_path):
 
 def test_resolve_logs_dir_prefers_the_configured_path(tmp_path):
     assert resolve_logs_dir(tmp_path / "custom", tmp_path / "logs") == tmp_path / "logs"
+
+
+def test_scope_failures_keeps_this_system_and_unowned_failures():
+    """A failure belongs to a system only when its tag names that system."""
+    alpha = {
+        "tag": "StationGreetingAlpha Station",
+        "reason": "cannot be validated",
+        "line": "skipping UPDATEDB for tag StationGreetingAlpha Station ...",
+    }
+    beta = {
+        "tag": "StationChatterBeta Station",
+        "reason": "cannot be validated",
+        "line": "skipping UPDATEDB for tag StationChatterBeta Station ...",
+    }
+    unowned = {
+        "tag": "SystemGreeting",
+        "reason": "unknown tag",
+        "line": "skipping UPDATEDB for tag SystemGreeting ...",
+    }
+
+    assert scope_failures([alpha, beta, unowned], "Alpha", ["Alpha", "Beta"]) == [
+        alpha,
+        unowned,
+    ]
+    assert scope_failures([alpha, beta, unowned], "Beta", ["Alpha", "Beta"]) == [
+        beta,
+        unowned,
+    ]
+
+
+def test_scope_failures_keeps_a_failure_naming_no_open_system():
+    unowned = {"tag": "SystemGreeting", "reason": "unknown", "line": "..."}
+    assert scope_failures([unowned], "Gamma", ["Alpha", "Beta"]) == [unowned]
+
+
+def test_scope_failures_owns_a_line_that_names_two_systems():
+    shared = {
+        "tag": "StationGreetingAlpha Station",
+        "reason": "Beta Station also named",
+        "line": "Alpha Station and Beta Station",
+    }
+    assert scope_failures([shared], "Alpha", ["Alpha", "Beta"]) == [shared]
+    assert scope_failures([shared], "Gamma", ["Alpha", "Beta"]) == []
+

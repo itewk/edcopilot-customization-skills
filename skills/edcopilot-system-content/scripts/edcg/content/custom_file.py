@@ -2,7 +2,7 @@
 
 Everything needed to append validated content to
 ``EDCoPilot.SpeechExtensions.Custom.txt``: the block splitter, the provenance
-marker, the per-block labelling and the git commit. The old MCP handler's
+marker, the per-block labelling and the git commit. The old handler's
 gate/workflow behaviour is deliberately absent (spec D2: no script refuses).
 """
 

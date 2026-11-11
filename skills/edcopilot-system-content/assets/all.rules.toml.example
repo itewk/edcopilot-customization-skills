@@ -1,0 +1,54 @@
+# This project's own rules, for every system it writes content for.
+#
+# The tool's base rule set (rules/base.toml in the installed package) holds what
+# EDCoPilot requires of any author, whoever they are. This file holds what this
+# author requires of themselves. A rule that is a matter of taste belongs here and
+# nowhere else, so that the tool can be handed to somebody else without carrying
+# my preferences.
+#
+# How a table here is read:
+#   - with `impl`, it declares a rule of its own, naming the function that finds
+#     it - including the ones the tool ships and does not use itself;
+#   - with no `impl`, it changes a base rule: the table's path names the rule and
+#     the keys below are the only ones that change. That is how the numbers and
+#     the logo below are set without restating a rule that is not mine.
+
+# No profanity, flirt, innuendo or alcohol, anywhere in the authored region.
+#
+# The base rules require content of that kind to be TAGGED, so that a player who
+# switched the mode off does not hear it; this project does not write it in the
+# first place. The tag is the evidence: a line that could carry one of those four
+# filters is a line I do not want, so the rule fails on the tag rather than on a
+# reading of the words - which is what makes it checkable at all.
+#
+# `rule_filters_banned` ships with the tool and no base rule names it; this is
+# what it was shipped for. The package's validation module lists it under the
+# implementations no base rule names until this file declares it.
+[rules.filters.banned]
+impl = "rule_filters_banned"
+severity = "error"
+tokens = ["profanity", "flirt", "innuendo", "alcohol"]
+why = """
+I publish no profanity, flirtation, innuendo or alcohol, so my content carries
+none of it. EDCoPilot's requirement is the weaker one - tag it, and let the
+player's own setting decide - and that is the base rule set's. Mine is that the
+content is not written at all, and one of those four filters on a line is how a
+line says it was.
+
+Scoped as the content policy is: EDCoPilot's own default content, above the first
+provenance line, carries (flirt), and that is its business rather than mine.
+"""
+
+# Every station fact carries this project's logo. The base rule requires the
+# img_url= line and has no opinion about which picture it points at; the picture
+# is the project's, so the value is here.
+[rules.content.fact_image]
+expected = "https://elite-dangerous.skyrunner42.xyz/ii42-logo.jpg"
+
+# Two (allbusiness) lines on a tag that carries a conversation, and one on a
+# station greeting, which is a single short line by design. The base rule holds
+# the floor - a tag with none is silent in All Business mode - and this is the
+# pattern I want above it.
+[rules.filters.allbusiness]
+warn_below = 2
+warn_below_by_kind = { StationGreeting = 1 }

@@ -294,3 +294,47 @@ class TestContentRootField:
 
         with pytest.raises(ContentRootError):
             load_config({"EDCG_CONTENT_DEFINITIONS_ROOT": str(content)})
+
+
+class TestLogsDirField:
+    """Tests for the edcopilot_logs_dir field (Task 8 carry-forward)."""
+
+    def test_logs_dir_from_environment(self, monkeypatch, tmp_path):
+        (tmp_path / "systems").mkdir()
+        edcopilot = tmp_path / "edcopilot"
+        edcopilot.mkdir()
+        logs = tmp_path / "logs"
+        logs.mkdir()
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("EDCG_CONTENT_DEFINITIONS_ROOT", raising=False)
+        monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(edcopilot))
+        monkeypatch.setenv("EDCG_EDCOPILOT_LOGS_DIR", str(logs))
+
+        config = load_config(os.environ)
+        assert config.edcopilot_logs_dir == logs
+
+    def test_logs_dir_defaults_to_none(self, monkeypatch, tmp_path):
+        (tmp_path / "systems").mkdir()
+        edcopilot = tmp_path / "edcopilot"
+        edcopilot.mkdir()
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("EDCG_CONTENT_DEFINITIONS_ROOT", raising=False)
+        monkeypatch.delenv("EDCG_EDCOPILOT_LOGS_DIR", raising=False)
+        monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(edcopilot))
+
+        config = load_config(os.environ)
+        assert config.edcopilot_logs_dir is None
+
+    def test_logs_dir_defaults_to_the_parent_logs_folder(self, monkeypatch, tmp_path):
+        (tmp_path / "systems").mkdir()
+        edcopilot = tmp_path / "edcopilot"
+        edcopilot.mkdir()
+        logs = tmp_path / "logs"
+        logs.mkdir()
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("EDCG_CONTENT_DEFINITIONS_ROOT", raising=False)
+        monkeypatch.delenv("EDCG_EDCOPILOT_LOGS_DIR", raising=False)
+        monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(edcopilot))
+
+        config = load_config(os.environ)
+        assert config.edcopilot_logs_dir == logs
