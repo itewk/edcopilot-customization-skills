@@ -70,32 +70,6 @@ def test_init_makes_one_scaffolding_commit_with_git(tmp_path, monkeypatch, capsy
     assert _git(tmp_path, "status", "--porcelain").strip() == ""
 
 
-def test_init_commits_only_the_scaffold(tmp_path, monkeypatch, capsys):
-    """Unrelated untracked files in an existing repo stay untracked."""
-    monkeypatch.setenv("GIT_AUTHOR_NAME", "Init Test")
-    monkeypatch.setenv("GIT_AUTHOR_EMAIL", "init@example.com")
-    monkeypatch.setenv("GIT_COMMITTER_NAME", "Init Test")
-    monkeypatch.setenv("GIT_COMMITTER_EMAIL", "init@example.com")
-
-    # An existing repository with a commit and an unrelated untracked file.
-    from edcg.repo.gitrepo import GitRepo
-
-    GitRepo.init(tmp_path).close()
-    (tmp_path / "README.md").write_text("# existing\n", encoding="utf-8")
-    _git(tmp_path, "add", "README.md")
-    _git(tmp_path, "commit", "-m", "existing")
-    (tmp_path / "unrelated.txt").write_text("keep me\n", encoding="utf-8")
-
-    assert cli.main(["init"]) == 0
-    _json(capsys)
-
-    committed = _git(tmp_path, "show", "--name-only", "--format=", "HEAD").split()
-    assert "unrelated.txt" not in committed
-    assert committed == [cli.CONFIG_FILENAME]
-    status = _git(tmp_path, "status", "--porcelain")
-    assert "?? unrelated.txt" in status
-
-
 def test_init_refuses_when_systems_already_exists(tmp_path, capsys):
     (tmp_path / "systems").mkdir()
     (tmp_path / "systems" / "keep.md").write_text("keep", encoding="utf-8")
@@ -120,3 +94,32 @@ def test_init_refuses_a_second_run(tmp_path, capsys):
     capsys.readouterr()
     assert cli.main(["init", "--no-git"]) == 1
     assert "already a content repository" in _json(capsys)["error"]
+
+
+def test_init_stages_only_config(tmp_path, monkeypatch, capsys):
+    # D8: the skeleton commit stages ONLY the config file — never a sweep.
+    # Build an existing repo with an unrelated untracked file, run init,
+    # and assert the commit contains only the config file while the
+    # unrelated file stays untracked.
+    monkeypatch.setenv("GIT_AUTHOR_NAME", "Init Test")
+    monkeypatch.setenv("GIT_AUTHOR_EMAIL", "init@example.com")
+    monkeypatch.setenv("GIT_COMMITTER_NAME", "Init Test")
+    monkeypatch.setenv("GIT_COMMITTER_EMAIL", "init@example.com")
+
+    # An existing repository with a commit and an unrelated untracked file.
+    from edcg.repo.gitrepo import GitRepo
+
+    GitRepo.init(tmp_path).close()
+    (tmp_path / "README.md").write_text("# existing\n", encoding="utf-8")
+    _git(tmp_path, "add", "README.md")
+    _git(tmp_path, "commit", "-m", "existing")
+    (tmp_path / "unrelated.txt").write_text("keep me\n", encoding="utf-8")
+
+    assert cli.main(["init"]) == 0
+    _json(capsys)
+
+    committed = _git(tmp_path, "show", "--name-only", "--format=", "HEAD").split()
+    assert "unrelated.txt" not in committed
+    assert committed == [cli.CONFIG_FILENAME]
+    status = _git(tmp_path, "status", "--porcelain")
+    assert "?? unrelated.txt" in status
