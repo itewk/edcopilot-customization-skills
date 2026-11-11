@@ -23,41 +23,38 @@ advisory, and the agent's discipline carries them.
 
 ## Setup
 
-1. Run `python <skill-dir>/scripts/edcg.py doctor` before anything else. It
-   prints one `OK` or `FAIL` line per check (Python version, `httpx`, GitPython,
-   the `git` binary, git identity, content root, EDCoPilot root). Relay every
-   `FAIL` together with the `fix:` hint it prints.
-2. **First run is allowed to fail the root check.** On a fresh setup the
-   EDCoPilot root is not configured yet, so `doctor` reports it as
-   `not configured (expected on first run)` — and any logs check that depends on
-   it fails with it. When those are the **only** failures, that is the expected
-   first-run shape, not a reason to stop: continue with steps 3 and 4. Do not
-   bypass any other failed check.
-3. The content root is the current working directory. Set
+1. **Check the environment.** Run `python <skill-dir>/scripts/edcg.py doctor`.
+   It prints one `OK` or `FAIL` line per check (Python version, `httpx`,
+   GitPython, the `git` binary, git identity, content root, EDCoPilot root).
+   Relay every `FAIL` with the `fix:` hint it prints. On a fresh machine the
+   EDCoPilot-root check — and the logs check that depends on it — fails with
+   `not configured (expected on first run)`; that is expected, and no other
+   failed check may be bypassed.
+2. **Establish the content root.** It is the current working directory; set
    `EDCG_CONTENT_DEFINITIONS_ROOT` to use another directory. The dossier, the
-   rules file and the git history all live there; nothing else stores workflow
-   state. Every environment variable the scripts read is listed in the
-   Environment variables section of
-   [`references/workflow-details.md`](references/workflow-details.md). If
-   `doctor` reports the content root as `blank`, do not invent a
-   layout. Confirm with the user first: "this directory isn't a content repository yet
-   — set one up here?" On a yes, run `edcg.py init`. It writes the config file, a
+   rules file and the git history live there; nothing else stores workflow
+   state. If `doctor` reports the root as `blank`, do not invent a layout:
+   confirm with the user first ("this directory isn't a content repository yet
+   — set one up here?"), then run `edcg.py init`. It writes the config file, a
    `systems/` directory, the rules example and, unless `--no-git` is passed, an
    initial commit. Offer `--no-git` when the user does not want a repository.
-4. EDCoPilot's "User custom files" folder is resolved from
-   `EDCG_EDCOPILOT_ROOT`, then from `roots.edcopilot` in the config file in the
-   content repository, then by asking the user. Ask now if it is unresolved, and
-   store the answer in the config file when it is stable; never guess a path into
-   a game installation. Re-run `doctor` and require every check to pass
-   **before any content work**. If doctor warns that the EDCoPilot-root folder
-   does not look right, confirm the path with the user before proceeding.
-5. EDCoPilot must be closed whenever a step writes the custom file or changes
-   markers. Ask the user to close it, and to restart it when the marker cycle
-   calls for a restart.
+3. **Establish the EDCoPilot root.** EDCoPilot's "User custom files" folder is
+   resolved from `EDCG_EDCOPILOT_ROOT`, then from `roots.edcopilot` in the
+   content repository's config file, then by asking the user. Ask now if it is
+   unresolved, and store the answer in the config file when it is stable; never
+   guess a path into a game installation. If `doctor` warns that the folder does
+   not look right, confirm the path with the user before proceeding.
+4. **Re-run `doctor`.** Require every check to pass before any content work.
+   The environment-variable reference is the "Environment variables" section of
+   [`references/workflow-details.md`](references/workflow-details.md).
 
 ## Process
 
 Run these in order. Every step applies to both modes; where the new-system and update paths differ, the step says so.
+
+EDCoPilot must be closed whenever a step writes the custom file or changes
+markers (steps 10, 12 and 16). Ask the user to close it, and to restart it when
+a step calls for a restart.
 
 1. **Resume.** Run `edcg.py audit --system <name>` (or `edcg.py update-scan` when facts may have moved). Read the repository state: `systems/`, the custom file, `UPDATEDB` markers, git log.
 2. **Gather facts.** New: `edcg.py gather-facts --system <name>`. When Raven
@@ -71,7 +68,7 @@ Run these in order. Every step applies to both modes; where the new-system and u
 7. **Writing brief.** `edcg.py writing-brief-data --system <name>` supplies the exact tag lines, bounds and voices. Do not invent tag lines.
 8. **Write the block.** Compose the content from the brief. Update mode: first `edcg.py get-content --system <name>` to read the exact existing lines, then `edcg.py rewrite-tag` for every removal, replacement or addition (staged, not committed).
 9. **Validate the content.** `edcg.py validate-content` (JSON stdin). Fix every `error` and repeat until `passed` is true; present the returned rule table.
-10. **Write the content.** Close EDCoPilot first. `edcg.py write-content` (JSON stdin, including `commit_co_author`) appends the block with provenance and commits, including any rewrites staged in step 8.
+10. **Write the content.** `edcg.py write-content` (JSON stdin, including `commit_co_author`) appends the block with provenance and commits, including any rewrites staged in step 8.
 11. **Review gate.** Ask the user whether to mark for update now or to review first (static: read the file or diff; live: restart EDCoPilot and listen). Record the choice in the conversation and follow it.
 12. **Mark for update.** `edcg.py markdb add --tag <tag> ...` (or JSON `tags`). One commit. Compare `modified_tags` to the tags you passed — a missing tag matched no authored content; stop and reconcile the station/tag name before proceeding.
 13. **Restart.** Ask the user to restart EDCoPilot and confirm when done.

@@ -244,10 +244,11 @@ class TestBodyShape:
         text = "\n".join(body)
         lowered = text.lower()
         assert "expected on first run" in lowered
-        assert "only" in lowered and "failures" in lowered
+        flattened = " ".join(lowered.split())
+        assert "no other failed check may be bypassed" in flattened
         assert "before any content work" in lowered
         assert "roots.edcopilot" in text
-        assert "does not look right" in lowered
+        assert "does not look right" in flattened
 
     def test_setup_documents_the_content_root_and_blank_directory_flow(self):
         _, body = _body()
@@ -445,3 +446,16 @@ def test_skill_md_has_numbered_process():
 
     for number in range(1, 17):
         assert f"\n{number}. **" in text, f"Process is missing step number {number}"
+
+
+def test_skill_md_setup_is_focused():
+    content = SKILL_MD.read_text(encoding="utf-8")
+    setup_start = content.index("## Setup")
+    process_start = content.index("## Process")
+    setup = content[setup_start:process_start]
+    for label in ("**Check the environment.**", "**Establish the content root.**",
+                  "**Establish the EDCoPilot root.**", "**Re-run `doctor`.**"):
+        assert label in setup, label
+    assert "must be closed whenever" not in setup
+    assert "must be closed whenever" in content[process_start:]
+    assert "Close EDCoPilot first." not in content
