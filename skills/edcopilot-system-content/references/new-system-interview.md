@@ -16,9 +16,10 @@ Never create a branch without being asked.
 
 ## FACTUAL BASELINE (from live data)
 
-Run `edcg.py gather-facts --system <name>` first and show the result. When Raven
-has no entry for the system, run the interview from the human's description
-instead and say that no live baseline exists.
+Gather facts first when the system has a Raven entry: run
+`edcg.py gather-facts --system <name>` and show the result. When the system has
+no Raven entry, skip gathering and start the interview from the human's
+description instead, saying that no live baseline exists.
 
 The baseline is grouped by what it means for the design:
 

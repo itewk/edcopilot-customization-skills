@@ -2,8 +2,8 @@
 
 ``UPDATEDB`` markers sit immediately under a tag and tell EDCoPilot's database
 builder that the block changed. Adding or removing markers is one pass, one
-file write and one commit. The old handlers' gate/workflow behaviour is
-deliberately absent (spec D2: no script refuses).
+file write and one commit. The scripts never pause for a gate; they do refuse
+impossible or invalid operations.
 """
 
 import os
@@ -29,6 +29,12 @@ def _resolve_custom_file() -> tuple[Path, object]:
             "roots.edcopilot in the content repo's config file"
         )
     return root / CUSTOM_FILE_NAME, config
+
+
+def custom_file_exists() -> bool:
+    """Whether EDCoPilot's custom file exists; False before the first write."""
+    custom_file, _ = _resolve_custom_file()
+    return custom_file.exists()
 
 
 def _commit_marker_change(

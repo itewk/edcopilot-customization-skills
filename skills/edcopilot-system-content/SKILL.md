@@ -88,7 +88,7 @@ success, `1` a check failed, `2` usage error.
 
 | Command | Purpose |
 |---|---|
-| `edcg.py doctor` | Check Python, packages, git identity and both roots |
+| `edcg.py doctor` | Check Python, packages, the git binary, git identity and both roots |
 | `edcg.py init` | Scaffold a blank content repository (`--no-git` to skip git) |
 | `edcg.py gather-facts` | One system's facts as JSON (`--system <name>`) |
 | `edcg.py get-template` | Print the dossier template validation enforces |

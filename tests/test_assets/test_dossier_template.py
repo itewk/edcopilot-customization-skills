@@ -7,9 +7,10 @@ test asserts the same property against the static text. Where an old test
 asserted loop expansion, the port asserts that no loop artifacts remain and
 that the zero-iteration table/section structure is present instead.
 
-The old tests for ``rules.toml.j2`` and ``all.rules.toml.example`` are deleted:
-both artifacts were dropped by the new design, so there is no file to assert
-against and a negative assertion would be vacuous.
+The old Jinja template ``rules.toml.j2`` was dropped by the new design, so its
+tests are deleted. ``all.rules.toml.example`` still ships: ``init`` copies it
+into every new content repository, and ``tests/test_skill/test_assets.py``
+guards its neutrality, so there is nothing to assert here.
 """
 
 import pytest
@@ -264,8 +265,9 @@ class TestDossierTemplateAsset:
         """Old test: templates parse as Jinja. Static port: no Jinja constructs.
 
         The old test parsed ``dossier.md.j2``, ``rules.toml.j2`` and
-        ``all.rules.toml.example``. Only the dossier asset survives the design
-        change, and it must contain no Jinja syntax at all.
+        ``all.rules.toml.example``. The Jinja templates were dropped by the
+        design change; only the static dossier asset remains to check here, and
+        it must contain no Jinja syntax at all.
         """
         template_str = get_template(ASSET)
         assert template_str

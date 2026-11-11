@@ -33,7 +33,7 @@ that is unset or empty falls back to the default in the table.
 | `EDCG_INARA_API_KEY` | Inara API key. When unset, Inara checks are skipped and `audit` reports "Inara API key is not configured." — the answer to "why is Inara unavailable". |
 | `EDCG_SPANSH_ENABLED` | Whether Spansh is queried. Defaults to true. |
 | `EDCG_RAVEN_API_URL` | Raven Colonial base URL. Defaults to the hosted Raven Colonial service. |
-| `EDCG_LOG_LEVEL` | Logging threshold. Defaults to `INFO`. |
+| `EDCG_LOG_LEVEL` | Accepted but currently unused (reserved). |
 | `EDCG_DEEPL_API_KEY` | Reserved; accepted and ignored. Nothing uses it yet. |
 
 ## The marker cycle

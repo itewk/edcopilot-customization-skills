@@ -3,8 +3,8 @@
 Every subcommand is a thin, scriptable wrapper around one function in the
 ``edcg`` package. Data subcommands print JSON on stdout; ``get-template`` and
 ``version`` print their value directly. Exit codes: 0 success, 1 check
-failure, 2 usage error. Nothing here refuses a workflow step: the skill asks
-the user, and the scripts do what they are told.
+failure, 2 usage error. The scripts never pause for a gate; they do refuse
+impossible or invalid operations.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ from edcg.common.config import (
     resolve_edcopilot_root,
 )
 from edcg.content.custom_file import CUSTOM_FILE_NAME, write_content
-from edcg.content.markdb import markdb_add, markdb_remove
+from edcg.content.markdb import custom_file_exists, markdb_add, markdb_remove
 from edcg.content.rewrite import get_system_content, rewrite_tag
 from edcg.facts.facts import gather_facts
 from edcg.repo import branches
@@ -561,13 +561,23 @@ def command_rewrite_tag(args: argparse.Namespace) -> int:
     return 0
 
 
-def _warn_unmatched_tags(requested: list[str], modified: list[str]) -> None:
+def _warn_unmatched_tags(
+    requested: list[str],
+    modified: list[str],
+    *,
+    custom_file_missing: bool = False,
+) -> None:
     """Make a marker no-op observable without turning it into a failure.
 
     A mistyped tag matches no authored content and the call stays a no-op, which
     is the old tool's parity behaviour. The warning names the tags so the caller
     can reconcile the station or tag name instead of assuming the marker landed.
+
+    A missing custom file already explains why nothing matched, so it is not
+    reported again as a per-tag mismatch.
     """
+    if custom_file_missing:
+        return
     matched = set(modified)
     seen: set[str] = set()
     missing: list[str] = []
@@ -597,7 +607,11 @@ def command_markdb(args: argparse.Namespace) -> int:
         result = markdb_add(tags, commit_co_author=co_author)
     else:
         result = markdb_remove(tags, commit_co_author=co_author)
-    _warn_unmatched_tags(tags, result["modified_tags"])
+    _warn_unmatched_tags(
+        tags,
+        result["modified_tags"],
+        custom_file_missing=not custom_file_exists(),
+    )
     _emit(result)
     return 0
 
