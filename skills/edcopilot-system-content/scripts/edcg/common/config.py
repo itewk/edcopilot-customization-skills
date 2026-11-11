@@ -52,6 +52,7 @@ class Config:
     content_definitions_root: Path
     content_root: Path
     edcopilot_root: Optional[Path] = None
+    edcopilot_logs_dir: Optional[Path] = None
 
     # Optional settings
     auto_commit: bool = True
@@ -125,11 +126,22 @@ def load_config(env: Mapping[str, str]) -> Config:
     content_root = resolve_content_root(_current_dir(), env)
 
     edcopilot_root = _env_value(env, "EDCG_EDCOPILOT_ROOT")
+    edcopilot_logs_value = _env_value(env, "EDCG_EDCOPILOT_LOGS_DIR")
+    edcopilot_logs_dir: Optional[Path]
+    if edcopilot_logs_value is not None:
+        edcopilot_logs_dir = Path(edcopilot_logs_value)
+    elif edcopilot_root is not None:
+        # EDCoPilot keeps its logs beside the "User custom files" folder.
+        candidate = Path(edcopilot_root).parent / "logs"
+        edcopilot_logs_dir = candidate if candidate.is_dir() else None
+    else:
+        edcopilot_logs_dir = None
 
     return Config(
         content_definitions_root=content_root,
         content_root=content_root,
         edcopilot_root=Path(edcopilot_root) if edcopilot_root is not None else None,
+        edcopilot_logs_dir=edcopilot_logs_dir,
         auto_commit=_str_to_bool(_env_value(env, "EDCG_AUTO_COMMIT") or "true"),
         raven_api_url=_env_value(env, "EDCG_RAVEN_API_URL") or DEFAULT_RAVEN_API_URL,
         inara_api_key=_env_value(env, "EDCG_INARA_API_KEY"),
@@ -137,6 +149,15 @@ def load_config(env: Mapping[str, str]) -> Config:
         spansh_enabled=_str_to_bool(_env_value(env, "EDCG_SPANSH_ENABLED") or "true"),
         log_level=_env_value(env, "EDCG_LOG_LEVEL") or DEFAULT_LOG_LEVEL,
     )
+
+
+def get_config(env: Mapping[str, str] | None = None) -> Config:
+    """Load configuration from the environment, once per call.
+
+    Callers resolve roots lazily rather than caching a stale answer, and tests
+    patch this module-level name to inject a configuration.
+    """
+    return load_config(os.environ if env is None else env)
 
 
 def resolve_content_root(cwd: Path, env: Mapping[str, str]) -> Path:

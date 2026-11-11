@@ -1,9 +1,8 @@
 """Tests for the four-source audit report (Story 6.2).
 
 The core audit is pure: it receives an already-gathered ``SystemFacts`` and
-compares Journal, Raven Colonial, Inara and Spansh without any I/O. The MCP
-wrapper is the only part that gathers facts; it is gone in this repository
-(spec D2), so the report is built and serialised directly here.
+compares Journal, Raven Colonial, Inara and Spansh without any I/O. The report
+is built and serialised directly here; no wrapper gathers facts.
 
 No network, no real journal and no real EDCoPilot folder are touched.
 """
@@ -627,3 +626,56 @@ def test_source_status_and_report_dataclasses_have_expected_defaults() -> None:
     assert report.passed is True
     assert report.raven_revision is None
     assert report.last_journal_visit is None
+
+
+def test_audit_cli_injects_gather_facts_and_prints_the_report(
+    monkeypatch, capsys
+) -> None:
+    """The CLI audit gathers once, with the loaded config, and prints JSON.
+
+    Carries the two gather-injection assertions dropped from the Task 8 port:
+    the system name reaches the gatherer, and it receives the CLI's config.
+    """
+    from edcg import cli
+
+    facts = SystemFacts(
+        system_name="Alpha",
+        raven_system=raven_system(revision=7),
+        raven_sites=[raven_site()],
+        journal_data=journal_data([journal_station()]),
+        inara_system=inara_system(),
+        spansh_system=spansh_system([spansh_station()]),
+        spansh_stations=[spansh_station()],
+    )
+    config = empty_config(inara_api_key="key", spansh_enabled=True)
+
+    async def fake_gather(system_name: str, received_config):
+        assert system_name == "Alpha"
+        assert received_config is config
+        return facts
+
+    monkeypatch.setattr(cli, "load_config", lambda env: config)
+    monkeypatch.setattr(cli, "gather_facts", fake_gather)
+
+    assert cli.main(["audit", "--system", "Alpha"]) == 0
+    data = json.loads(capsys.readouterr().out)
+
+    assert json.loads(json.dumps(data)) == data
+    assert {
+        "system_name",
+        "sources",
+        "discrepancies",
+        "counts",
+        "passed",
+        "raven_revision",
+        "last_journal_visit",
+    } <= set(data)
+    assert data["system_name"] == "Alpha"
+    assert set(data["sources"]) == {"journal", "raven", "inara", "spansh"}
+    assert data["sources"]["raven"]["available"] is True
+    assert data["sources"]["raven"]["records"] == 1
+    assert data["discrepancies"] == []
+    assert data["counts"]["error"] == 0
+    assert data["passed"] is True
+    assert data["raven_revision"] == 7
+    assert data["last_journal_visit"] == DT.isoformat()

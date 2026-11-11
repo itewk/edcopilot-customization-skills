@@ -365,17 +365,23 @@ class GitRepo:
         except GitCommandError:
             return None
 
-    def push(self, remote: str = "origin") -> None:
-        """Push the current branch to the given remote."""
+    def push(self, remote: str = "origin") -> Optional[bool]:
+        """Push the current branch to the given remote.
+
+        Returns:
+            True when the push succeeded, False when git refused it (for
+            example there is no such remote), and None for a non-repository.
+            Callers report the outcome instead of assuming success.
+        """
         repo = self._require_repo("push")
         if repo is None:
             return None
 
         try:
             repo.git.push(remote)
+            return True
         except GitCommandError:
-            pass
-        return None
+            return False
 
     def current_branch(self) -> str:
         """Return the current branch name, or '' if detached/not a repo."""

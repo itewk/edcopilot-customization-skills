@@ -1,0 +1,827 @@
+"""CLI entry point for the EDCoPilot system-content skill.
+
+Every subcommand is a thin, scriptable wrapper around one function in the
+``edcg`` package. Data subcommands print JSON on stdout; ``get-template`` and
+``version`` print their value directly. Exit codes: 0 success, 1 check
+failure, 2 usage error. Nothing here refuses a workflow step: the skill asks
+the user, and the scripts do what they are told.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import importlib
+import json
+import os
+import platform
+import subprocess
+import sys
+from dataclasses import asdict, is_dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Optional
+
+from edcg.common.config import (
+    CONFIG_FILENAME,
+    ConfigError,
+    ContentRootError,
+    content_root_state,
+    load_config,
+    resolve_content_root,
+    resolve_edcopilot_root,
+)
+from edcg.content.custom_file import CUSTOM_FILE_NAME, VERSION, write_content
+from edcg.content.markdb import markdb_add, markdb_remove
+from edcg.content.rewrite import get_system_content, rewrite_tag
+from edcg.facts.facts import gather_facts
+from edcg.repo import branches
+from edcg.repo.audit import build_audit_report
+from edcg.repo.brief import build_update_scan, system_names, writing_brief_data
+from edcg.repo.dossier import save_definition
+from edcg.repo.gitrepo import GitRepo
+from edcg.repo.logs import check_logs, scope_failures
+from edcg.rules.engine import get_template
+from edcg.rules.validation import validate_content, validate_definition
+
+_MAX_STATION_BODIES = 20
+
+CONFIG_TEMPLATE = """\
+# edcg content repository configuration.
+#
+# EDCoPilot's "User custom files" folder is resolved from EDCG_EDCOPILOT_ROOT,
+# then from the roots.edcopilot key below, then by asking the caller.
+[roots]
+# edcopilot = "C:/Users/you/Saved Games/Frontier Developments/Elite Dangerous"
+"""
+
+
+class UsageError(Exception):
+    """A command was called with a missing or malformed payload."""
+
+
+# ---------------------------------------------------------------------------
+# Output helpers
+# ---------------------------------------------------------------------------
+
+
+def _json_default(value: Any) -> Any:
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, set):
+        return sorted(value)
+    if is_dataclass(value):
+        return asdict(value)
+    return str(value)
+
+
+def _emit(payload: Any) -> None:
+    print(json.dumps(payload, indent=2, ensure_ascii=False, default=_json_default))
+
+
+def _fail(message: str) -> int:
+    _emit({"error": message})
+    return 1
+
+
+def _payload() -> dict:
+    """Read one JSON object from stdin."""
+    text = sys.stdin.read()
+    if not text.strip():
+        raise UsageError("expected a JSON payload on stdin")
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise UsageError(f"invalid JSON payload: {exc}") from exc
+    if not isinstance(data, dict):
+        raise UsageError("JSON payload must be an object")
+    return data
+
+
+def _required(data: dict, key: str) -> Any:
+    if key not in data or data[key] is None:
+        raise UsageError(f"payload is missing required field {key!r}")
+    return data[key]
+
+
+def _validation_dict(result) -> dict:
+    return {
+        "passed": result.passed,
+        "findings": [
+            {
+                "rule": finding.rule,
+                "severity": finding.severity,
+                "line": finding.line,
+                "message": finding.message,
+            }
+            for finding in result.findings
+        ],
+        "rule_summary": result.rule_summary,
+    }
+
+
+# ---------------------------------------------------------------------------
+# doctor
+# ---------------------------------------------------------------------------
+
+
+def _python_version() -> tuple[int, int]:
+    return (sys.version_info.major, sys.version_info.minor)
+
+
+def _check_import(module: str) -> tuple[bool, str]:
+    try:
+        importlib.import_module(module)
+    except Exception as exc:  # ImportError and anything the module raises
+        return False, str(exc)
+    return True, "importable"
+
+
+def _git_config(key: str) -> Optional[str]:
+    try:
+        result = subprocess.run(
+            ["git", "config", "--get", key],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    value = result.stdout.strip()
+    return value or None
+
+
+def _git_identity() -> tuple[Optional[str], Optional[str]]:
+    return _git_config("user.name"), _git_config("user.email")
+
+
+def _report_line(
+    label: str, ok: bool, detail: str, hint: Optional[str] = None
+) -> bool:
+    print(f"{'OK  ' if ok else 'FAIL'} {label}: {detail}")
+    if not ok and hint:
+        print(f"     fix: {hint}")
+    return ok
+
+
+def command_doctor(args: argparse.Namespace) -> int:
+    """One OK/FAIL line per check; exit 1 when anything fails."""
+    passed = True
+
+    major, minor = _python_version()
+    passed &= _report_line(
+        "python",
+        (major, minor) >= (3, 12),
+        f"Python {platform.python_version()} (3.12 or newer required)",
+        "install Python 3.12 or newer and run the script with it",
+    )
+
+    for module, hint in (("httpx", "pip install httpx gitpython"),
+                         ("git", "pip install httpx gitpython")):
+        ok, detail = _check_import(module)
+        passed &= _report_line(module, ok, detail, hint)
+
+    name, email = _git_identity()
+    if name and email:
+        passed &= _report_line(
+            "git identity", True, f"{name} <{email}>"
+        )
+    else:
+        missing = ", ".join(
+            label for label, value in (("user.name", name), ("user.email", email))
+            if not value
+        )
+        passed &= _report_line(
+            "git identity",
+            False,
+            f"missing {missing}",
+            'git config --global user.name "Your Name" && '
+            'git config --global user.email "you@example.com"',
+        )
+
+    content_root: Optional[Path] = None
+    try:
+        content_root = resolve_content_root(Path.cwd(), os.environ)
+    except ContentRootError as exc:
+        passed &= _report_line(
+            "content root",
+            False,
+            str(exc),
+            "set EDCG_CONTENT_DEFINITIONS_ROOT to an existing writable directory",
+        )
+    else:
+        passed &= _report_line(
+            "content root",
+            True,
+            f"{content_root} ({content_root_state(content_root)})",
+        )
+
+    if content_root is None:
+        passed &= _report_line(
+            "EDCoPilot root", False, "content root unavailable",
+            "fix the content root first",
+        )
+    else:
+        resolved = resolve_edcopilot_root(content_root, os.environ)
+        if resolved.path is not None:
+            passed &= _report_line(
+                "EDCoPilot root", True, f"{resolved.path} (source: {resolved.source})"
+            )
+        elif resolved.stale is not None:
+            passed &= _report_line(
+                "EDCoPilot root",
+                False,
+                f"configured path no longer exists: {resolved.stale}",
+                "update roots.edcopilot in the config file or set EDCG_EDCOPILOT_ROOT",
+            )
+        else:
+            passed &= _report_line(
+                "EDCoPilot root",
+                False,
+                "not configured",
+                "set EDCG_EDCOPILOT_ROOT or store roots.edcopilot in the config file",
+            )
+
+    return 0 if passed else 1
+
+
+# ---------------------------------------------------------------------------
+# init
+# ---------------------------------------------------------------------------
+
+
+def command_init(args: argparse.Namespace) -> int:
+    root = resolve_content_root(Path.cwd(), os.environ)
+    if content_root_state(root) == "existing":
+        return _fail(
+            f"{root} is already a content repository: it has a systems/ directory "
+            f"or {CONFIG_FILENAME}"
+        )
+
+    created: list[str] = []
+
+    config_file = root / CONFIG_FILENAME
+    if not config_file.exists():
+        config_file.write_text(CONFIG_TEMPLATE, encoding="utf-8", newline="\n")
+        created.append(CONFIG_FILENAME)
+
+    systems_dir = root / "systems"
+    if not systems_dir.is_dir():
+        systems_dir.mkdir(parents=True)
+        created.append("systems/")
+
+    example = systems_dir / "all.rules.toml.example"
+    example.write_text(
+        get_template("all.rules.toml.example"), encoding="utf-8", newline="\n"
+    )
+    created.append("systems/all.rules.toml.example")
+
+    git_info: dict[str, Any] = {"initialized": False, "commit": None}
+    if not args.no_git:
+        repo = GitRepo.init(root)
+        try:
+            repo.add_all()
+            commit = repo.commit("edcg: scaffold content repository")
+        finally:
+            repo.close()
+        git_info = {"initialized": True, "commit": commit}
+        if commit is None:
+            return _fail(
+                "git init succeeded but the scaffolding commit failed: "
+                "configure user.name and user.email (run `edcg doctor`)"
+            )
+
+    _emit(
+        {
+            "content_root": str(root),
+            "state": "blank",
+            "created": created,
+            "git": git_info,
+        }
+    )
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# facts, writing brief and update scan
+# ---------------------------------------------------------------------------
+
+
+def _facts_dict(facts) -> dict:
+    """The old gather-facts payload, with datetimes rendered as ISO 8601."""
+    return {
+        "system_name": facts.system_name,
+        "raven_system": {
+            "architect": facts.raven_system.architect,
+            "revision": facts.raven_system.revision,
+            "bodies": facts.raven_system.bodies,
+        }
+        if facts.raven_system
+        else None,
+        "raven_sites_loaded": facts.raven_sites_loaded,
+        "landable_stations": [
+            {
+                "name": station.name,
+                "build_type": station.build_type,
+                "facility_class": station.facility_class,
+                "facility_name": station.facility_name,
+                "body": station.body,
+                "status": station.status,
+                "source": station.source,
+                "placement": station.placement,
+            }
+            for station in facts.landable_stations
+        ],
+        "non_landable_sites": [
+            {
+                "name": site.name,
+                "build_type": site.build_type,
+                "facility_class": site.facility_class,
+                "facility_name": site.facility_name,
+                "body": site.body,
+                "status": site.status,
+                "source": site.source,
+                "placement": site.placement,
+            }
+            for site in facts.non_landable_sites
+        ],
+        "journal_only_stations": [
+            {
+                "name": station.name,
+                "system": station.system,
+                "timestamp": station.timestamp.isoformat(),
+                "market_id": station.market_id,
+            }
+            for station in facts.journal_only_stations
+        ],
+        "station_bodies": [
+            {
+                "name": body.name,
+                "sub_type": body.sub_type,
+                "atmosphere": body.atmosphere,
+                "temperature_k": body.temperature_k,
+                "pressure_atm": body.pressure_atm,
+                "gravity_g": body.gravity_g,
+                "radius_km": body.radius_km,
+                "volcanism": body.volcanism,
+                "orbital_period_days": body.orbital_period_days,
+                "landable": body.landable,
+                "terraforming_state": body.terraforming_state,
+            }
+            for body in facts.station_bodies[:_MAX_STATION_BODIES]
+        ],
+        "station_bodies_omitted": max(
+            0, len(facts.station_bodies) - _MAX_STATION_BODIES
+        ),
+        "conflicts": [
+            {
+                "field": conflict.field,
+                "value": conflict.value,
+                "sources": conflict.sources,
+                "conflict": conflict.conflict,
+                "details": conflict.details,
+            }
+            for conflict in facts.conflicts
+        ],
+    }
+
+
+def command_gather_facts(args: argparse.Namespace) -> int:
+    if not args.system:
+        raise UsageError("--system is required")
+    config = load_config(os.environ)
+    facts = asyncio.run(gather_facts(args.system, config))
+    _emit(_facts_dict(facts))
+    return 0
+
+
+def command_writing_brief_data(args: argparse.Namespace) -> int:
+    config = load_config(os.environ)
+    _emit(writing_brief_data(config, args.system))
+    return 0
+
+
+def command_update_scan(args: argparse.Namespace) -> int:
+    config = load_config(os.environ)
+    _emit(asyncio.run(build_update_scan(config, gather_facts)))
+    return 0
+
+
+def command_audit(args: argparse.Namespace) -> int:
+    config = load_config(os.environ)
+    facts = asyncio.run(gather_facts(args.system, config))
+    report = build_audit_report(facts, config)
+    _emit(report.to_dict())
+    return 0 if report.passed else 1
+
+
+# ---------------------------------------------------------------------------
+# definitions and content
+# ---------------------------------------------------------------------------
+
+
+def command_get_template(args: argparse.Namespace) -> int:
+    print(get_template("dossier-template.md"), end="")
+    return 0
+
+
+def command_validate_definition(args: argparse.Namespace) -> int:
+    data = _payload()
+    result = validate_definition(
+        dossier=_required(data, "dossier"),
+        rules=_required(data, "rules"),
+        system_name=_required(data, "system_name"),
+        all_rules=data.get("all_rules"),
+    )
+    _emit(_validation_dict(result))
+    return 0 if result.passed else 1
+
+
+def command_save_definition(args: argparse.Namespace) -> int:
+    data = _payload()
+    result = save_definition(
+        system_name=_required(data, "system_name"),
+        dossier_md=_required(data, "dossier_md"),
+        rules_toml=_required(data, "rules_toml"),
+        commit_co_author=data.get("commit_co_author"),
+    )
+    _emit(
+        {
+            "commit_hash": result.commit_hash,
+            "files_changed": result.files_changed,
+        }
+    )
+    return 0
+
+
+def command_validate_content(args: argparse.Namespace) -> int:
+    data = _payload()
+    result = validate_content(
+        content=_required(data, "content"),
+        system_name=_required(data, "system_name"),
+    )
+    _emit(_validation_dict(result))
+    return 0 if result.passed else 1
+
+
+def command_write_content(args: argparse.Namespace) -> int:
+    data = _payload()
+    result = write_content(
+        system_name=_required(data, "system_name"),
+        content_block=data.get("content_block", ""),
+        model=data.get("model"),
+        commit_co_author=data.get("commit_co_author"),
+    )
+    _emit(
+        {
+            "file_path": str(result.file_path),
+            "commit_hash": result.commit_hash,
+            "paused": getattr(result, "paused", False),
+            "ask_user": getattr(result, "ask_user", None),
+        }
+    )
+    return 0
+
+
+def command_get_content(args: argparse.Namespace) -> int:
+    _emit(get_system_content(args.system))
+    return 0
+
+
+def command_rewrite_tag(args: argparse.Namespace) -> int:
+    data = _payload()
+    result = rewrite_tag(
+        system_name=_required(data, "system_name"),
+        tag=_required(data, "tag"),
+        remove=data.get("remove"),
+        replace=data.get("replace"),
+        add=data.get("add"),
+    )
+    _emit(result)
+    return 0
+
+
+def command_markdb(args: argparse.Namespace) -> int:
+    data: dict = {}
+    if not args.tag:
+        data = _payload()
+    tags = args.tag or _required(data, "tags")
+    co_author = data.get("commit_co_author")
+    if args.markdb_command == "add":
+        result = markdb_add(tags, commit_co_author=co_author)
+    else:
+        result = markdb_remove(tags, commit_co_author=co_author)
+    _emit(result)
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# check-logs
+# ---------------------------------------------------------------------------
+
+
+def _parse_since(raw: str) -> datetime:
+    try:
+        moment = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise UsageError(
+            f"--since must be an ISO 8601 timestamp: {raw!r}"
+        ) from exc
+    if moment.tzinfo is None:
+        moment = moment.astimezone()
+    return moment
+
+
+def _custom_file_mtime(root: Path) -> Optional[datetime]:
+    custom_file = root / CUSTOM_FILE_NAME
+    if not custom_file.is_file():
+        return None
+    return datetime.fromtimestamp(custom_file.stat().st_mtime).astimezone()
+
+
+def command_check_logs(args: argparse.Namespace) -> int:
+    config = load_config(os.environ)
+    resolved = resolve_edcopilot_root(config.content_definitions_root, os.environ)
+    if resolved.path is None:
+        _emit(
+            {
+                "checked": False,
+                "log_path": None,
+                "since": None,
+                "failures": [],
+                "skipped_update": False,
+                "ok": False,
+                "summary": (
+                    f"Could not resolve EDCoPilot's root"
+                    + (f": configured path no longer exists: {resolved.stale}"
+                       if resolved.stale is not None else "")
+                ),
+            }
+        )
+        return 0
+
+    since = _parse_since(args.since) if args.since else _custom_file_mtime(
+        resolved.path
+    )
+    report = check_logs(
+        resolved.path, since, configured=config.edcopilot_logs_dir
+    )
+
+    if args.system:
+        report["system"] = args.system
+        if report["checked"]:
+            systems = system_names(config)
+            failures = scope_failures(report["failures"], args.system, systems)
+            report["failures"] = failures
+            report["ok"] = not failures and not report["skipped_update"]
+            if failures:
+                report["summary"] = (
+                    f"{len(failures)} UPDATEDB failure(s) in the new log."
+                )
+            elif report["skipped_update"]:
+                report["summary"] = (
+                    "EDCoPilot did not process a change: the custom file was "
+                    "unchanged since the last update."
+                )
+            else:
+                report["summary"] = (
+                    "No UPDATEDB failures in the log written after the restart."
+                )
+
+    _emit(report)
+    if report["checked"] and not report["ok"]:
+        return 1
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# branch orchestration
+# ---------------------------------------------------------------------------
+
+
+def command_branch_start(args: argparse.Namespace) -> int:
+    _emit(asdict(branches.start_branch(args.description)))
+    return 0
+
+
+def command_branch_status(args: argparse.Namespace) -> int:
+    _emit(asdict(branches.branch_status()))
+    return 0
+
+
+def command_branch_review(args: argparse.Namespace) -> int:
+    print(branches.review_branch())
+    return 0
+
+
+def command_branch_finalize(args: argparse.Namespace) -> int:
+    _emit(asdict(branches.finalize_branch(merge=args.merge, push=args.push)))
+    return 0
+
+
+def command_branch_abort(args: argparse.Namespace) -> int:
+    _emit(asdict(branches.abort_branch(confirm=args.confirm)))
+    return 0
+
+
+def command_version(args: argparse.Namespace) -> int:
+    print(VERSION)
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Parser and dispatch
+# ---------------------------------------------------------------------------
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="edcg",
+        description="EDCoPilot system-content authoring commands",
+    )
+    subparsers = parser.add_subparsers(dest="command", metavar="<command>")
+
+    subparsers.add_parser("doctor", help="Check Python, packages, git and roots")
+
+    init_parser = subparsers.add_parser(
+        "init", help="Scaffold a blank content repository"
+    )
+    init_parser.add_argument(
+        "--no-git", action="store_true", help="Do not run git init"
+    )
+
+    gather_parser = subparsers.add_parser(
+        "gather-facts", help="Gather a system's facts as JSON"
+    )
+    gather_parser.add_argument("--system", help="System name")
+
+    subparsers.add_parser("get-template", help="Print the dossier template")
+
+    subparsers.add_parser(
+        "validate-definition",
+        help="Validate a dossier and rules pair (JSON on stdin)",
+    )
+    subparsers.add_parser(
+        "save-definition",
+        help="Save a dossier and rules pair (JSON on stdin)",
+    )
+
+    brief_parser = subparsers.add_parser(
+        "writing-brief-data", help="Computed writing-brief data as JSON"
+    )
+    brief_parser.add_argument("--system", required=True, help="System name")
+
+    subparsers.add_parser(
+        "validate-content", help="Validate a content block (JSON on stdin)"
+    )
+    subparsers.add_parser(
+        "write-content", help="Append a content block (JSON on stdin)"
+    )
+
+    content_parser = subparsers.add_parser(
+        "get-content", help="Authored content for a system as JSON"
+    )
+    content_parser.add_argument("--system", required=True, help="System name")
+
+    subparsers.add_parser(
+        "update-scan", help="Scan every system for fact changes as JSON"
+    )
+    subparsers.add_parser(
+        "rewrite-tag", help="Rewrite one tag's dialog (JSON on stdin)"
+    )
+
+    markdb_parser = subparsers.add_parser(
+        "markdb", help="Add or remove UPDATEDB markers"
+    )
+    markdb_subparsers = markdb_parser.add_subparsers(
+        dest="markdb_command", metavar="add|remove"
+    )
+    for action in ("add", "remove"):
+        action_parser = markdb_subparsers.add_parser(
+            action,
+            help=f"{action.capitalize()} UPDATEDB markers for the given tags",
+        )
+        action_parser.add_argument(
+            "--tag",
+            action="append",
+            default=[],
+            help="Exact tag line (repeatable; otherwise JSON on stdin)",
+        )
+
+    logs_parser = subparsers.add_parser(
+        "check-logs", help="Check EDCoPilot's log after a restart"
+    )
+    logs_parser.add_argument(
+        "--since", help="ISO 8601 timestamp (default: custom-file mtime)"
+    )
+    logs_parser.add_argument("--system", help="Scope failures to this system")
+
+    audit_parser = subparsers.add_parser(
+        "audit", help="Audit a system across the four sources"
+    )
+    audit_parser.add_argument("--system", required=True, help="System name")
+
+    branch_parser = subparsers.add_parser(
+        "branch", help="Two-repository branch orchestration"
+    )
+    branch_subparsers = branch_parser.add_subparsers(
+        dest="branch_command", metavar="start|status|review|finalize|abort"
+    )
+    start_parser = branch_subparsers.add_parser(
+        "start", help="Start a feature branch in both repositories"
+    )
+    start_parser.add_argument("description", nargs="?", help="Branch description")
+    branch_subparsers.add_parser("status", help="Show branch status")
+    branch_subparsers.add_parser("review", help="Review branch changes")
+    finalize_parser = branch_subparsers.add_parser(
+        "finalize", help="Merge the feature branch into the default branch"
+    )
+    finalize_parser.add_argument(
+        "--merge", dest="merge", action="store_true", help="Merge (default)"
+    )
+    finalize_parser.add_argument(
+        "--no-merge", dest="merge", action="store_false", help="Do not merge"
+    )
+    finalize_parser.add_argument(
+        "--push", action="store_true", help="Push the default branch"
+    )
+    finalize_parser.set_defaults(merge=True, push=False)
+    abort_parser = branch_subparsers.add_parser(
+        "abort", help="Discard the feature branch"
+    )
+    abort_parser.add_argument(
+        "--confirm", action="store_true", help="Actually delete the branch"
+    )
+
+    subparsers.add_parser("version", help="Print the version string")
+
+    return parser
+
+
+_HANDLERS = {
+    "doctor": command_doctor,
+    "init": command_init,
+    "gather-facts": command_gather_facts,
+    "get-template": command_get_template,
+    "validate-definition": command_validate_definition,
+    "save-definition": command_save_definition,
+    "writing-brief-data": command_writing_brief_data,
+    "validate-content": command_validate_content,
+    "write-content": command_write_content,
+    "get-content": command_get_content,
+    "update-scan": command_update_scan,
+    "rewrite-tag": command_rewrite_tag,
+    "markdb": command_markdb,
+    "check-logs": command_check_logs,
+    "audit": command_audit,
+    "branch": None,
+    "version": command_version,
+}
+
+_BRANCH_HANDLERS = {
+    "start": command_branch_start,
+    "status": command_branch_status,
+    "review": command_branch_review,
+    "finalize": command_branch_finalize,
+    "abort": command_branch_abort,
+}
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if args.command is None:
+        parser.print_help()
+        return 0
+
+    if args.command == "branch":
+        handler = _BRANCH_HANDLERS.get(args.branch_command)
+        if handler is None:
+            print("usage: edcg branch {start,status,review,finalize,abort}",
+                  file=sys.stderr)
+            return 2
+    elif args.command == "markdb":
+        if getattr(args, "markdb_command", None) not in ("add", "remove"):
+            print("usage: edcg markdb {add,remove}", file=sys.stderr)
+            return 2
+        handler = _HANDLERS["markdb"]
+    else:
+        handler = _HANDLERS.get(args.command)
+        if handler is None:
+            print(f"unknown command: {args.command}", file=sys.stderr)
+            return 2
+
+    try:
+        return handler(args)
+    except UsageError as exc:
+        _emit({"error": str(exc)})
+        return 2
+    except (FileNotFoundError, ValueError, ConfigError, OSError) as exc:
+        return _fail(str(exc))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

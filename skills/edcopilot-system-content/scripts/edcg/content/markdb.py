@@ -2,7 +2,7 @@
 
 ``UPDATEDB`` markers sit immediately under a tag and tell EDCoPilot's database
 builder that the block changed. Adding or removing markers is one pass, one
-file write and one commit. The old MCP handlers' gate/workflow behaviour is
+file write and one commit. The old handlers' gate/workflow behaviour is
 deliberately absent (spec D2: no script refuses).
 """
 
