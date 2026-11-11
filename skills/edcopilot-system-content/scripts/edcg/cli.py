@@ -22,6 +22,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from edcg import __version__
 from edcg.common.config import (
     CONFIG_FILENAME,
     ConfigError,
@@ -31,7 +32,7 @@ from edcg.common.config import (
     resolve_content_root,
     resolve_edcopilot_root,
 )
-from edcg.content.custom_file import CUSTOM_FILE_NAME, VERSION, write_content
+from edcg.content.custom_file import CUSTOM_FILE_NAME, write_content
 from edcg.content.markdb import markdb_add, markdb_remove
 from edcg.content.rewrite import get_system_content, rewrite_tag
 from edcg.facts.facts import gather_facts
@@ -166,6 +167,22 @@ def _report_line(
     return ok
 
 
+def _looks_like_edcopilot_root(path: Path) -> bool:
+    """True when ``path`` holds at least one ``EDCoPilot*`` file.
+
+    The check is deliberately a warning, not a failure: EDCoPilot's layout is
+    the user's business, but a folder with no EDCoPilot file at all is worth
+    confirming before the workflow writes a custom file into it.
+    """
+    try:
+        return any(
+            child.is_file() and child.name.lower().startswith("edcopilot")
+            for child in path.iterdir()
+        )
+    except OSError:
+        return False
+
+
 def command_doctor(args: argparse.Namespace) -> int:
     """One OK/FAIL line per check; exit 1 when anything fails."""
     passed = True
@@ -229,6 +246,11 @@ def command_doctor(args: argparse.Namespace) -> int:
             passed &= _report_line(
                 "EDCoPilot root", True, f"{resolved.path} (source: {resolved.source})"
             )
+            if not _looks_like_edcopilot_root(resolved.path):
+                print(
+                    f"WARN EDCoPilot root: {resolved.path} does not look like "
+                    "EDCoPilot's User custom files folder — confirm with the user"
+                )
         elif resolved.stale is not None:
             passed &= _report_line(
                 "EDCoPilot root",
@@ -240,8 +262,9 @@ def command_doctor(args: argparse.Namespace) -> int:
             passed &= _report_line(
                 "EDCoPilot root",
                 False,
-                "not configured",
-                "set EDCG_EDCOPILOT_ROOT or store roots.edcopilot in the config file",
+                "not configured (expected on first run)",
+                "first run: set EDCG_EDCOPILOT_ROOT or store roots.edcopilot "
+                "in the config file",
             )
 
     return 0 if passed else 1
@@ -282,7 +305,9 @@ def command_init(args: argparse.Namespace) -> int:
     if not args.no_git:
         repo = GitRepo.init(root)
         try:
-            repo.add_all()
+            # Stage only what init created. An existing repository may hold
+            # unrelated untracked files; they must stay untracked.
+            repo.add(CONFIG_FILENAME, "systems")
             commit = repo.commit("edcg: scaffold content repository")
         finally:
             repo.close()
@@ -627,7 +652,7 @@ def command_branch_abort(args: argparse.Namespace) -> int:
 
 
 def command_version(args: argparse.Namespace) -> int:
-    print(VERSION)
+    print(__version__)
     return 0
 
 

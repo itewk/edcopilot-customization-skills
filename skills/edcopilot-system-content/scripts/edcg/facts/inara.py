@@ -92,11 +92,18 @@ class InaraClient:
         await self.close()
 
     async def _ensure_client(self) -> httpx.AsyncClient:
-        """Ensure the HTTP client is created."""
+        """Ensure the HTTP client is created.
+
+        Redirects are deliberately not followed. The old package followed them,
+        but this client POSTs a JSON body carrying the Inara API key: replaying
+        that body cross-origin on a 307/308 is an unnecessary exposure, and a
+        redirect from the API endpoint signals a configuration problem rather
+        than a legitimate move. A redirect surfaces as an HTTP error instead.
+        """
         if self._client is None:
             self._client = httpx.AsyncClient(
                 timeout=httpx.Timeout(self.timeout),
-                follow_redirects=True,
+                follow_redirects=False,
             )
         return self._client
 

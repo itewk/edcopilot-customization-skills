@@ -159,9 +159,12 @@ class TestFrontmatter:
         )
         assert len(compatibility) <= 500
 
-    def test_metadata_carries_the_version(self):
+    def test_metadata_carries_the_release_version(self):
+        from edcg import __version__
+
         data, _ = _body()
         assert data["metadata"]["version"] == "1.0.0"
+        assert data["metadata"]["version"] == __version__
 
 
 class TestBodyShape:
@@ -199,6 +202,17 @@ class TestBodyShape:
         assert "edcg.py init" in text
         assert text.index("edcg.py doctor") < text.index("edcg.py init")
         assert "fix:" in text.lower()
+
+    def test_setup_resolves_the_fresh_setup_contradiction(self):
+        """A missing root on first run is expected; everything else is not."""
+        _, body = _body()
+        text = "\n".join(body)
+        lowered = text.lower()
+        assert "expected on first run" in lowered
+        assert "only" in lowered and "failures" in lowered
+        assert "before any content work" in lowered
+        assert "roots.edcopilot" in text
+        assert "does not look right" in lowered
 
     def test_setup_documents_the_content_root_and_blank_directory_flow(self):
         _, body = _body()

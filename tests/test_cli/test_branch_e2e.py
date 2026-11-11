@@ -191,6 +191,65 @@ def test_branch_abort_variant_across_processes(tmp_path):
     assert _json(_cli(env, content_root, "branch", "status"))["active_branch"] is None
 
 
+def test_branch_start_uses_the_stored_edcopilot_root(tmp_path):
+    """With no env var, branch start resolves the root from the config file."""
+    content_root, runtime_root, env = _environment(tmp_path)
+    stored_env = {
+        key: value
+        for key, value in env.items()
+        if key != "EDCG_EDCOPILOT_ROOT"
+    }
+    (content_root / "edcopilot-customization-generator.toml").write_text(
+        f'[roots]\nedcopilot = "{runtime_root.as_posix()}"\n', encoding="utf-8"
+    )
+
+    started = _json(_cli(stored_env, content_root, "branch", "start", "stored root"))
+
+    assert "content" in started["repos_branched"]
+    assert "runtime" in started["repos_branched"]
+    for root in (content_root, runtime_root):
+        repo = GitRepo(root)
+        try:
+            assert repo.current_branch() == started["branch_name"]
+        finally:
+            repo.close()
+
+
+def test_branch_start_names_a_stale_stored_edcopilot_root(tmp_path):
+    content_root, _, env = _environment(tmp_path)
+    stored_env = {
+        key: value
+        for key, value in env.items()
+        if key != "EDCG_EDCOPILOT_ROOT"
+    }
+    missing = tmp_path / "gone"
+    (content_root / "edcopilot-customization-generator.toml").write_text(
+        f'[roots]\nedcopilot = "{missing.as_posix()}"\n', encoding="utf-8"
+    )
+
+    reply = _cli(stored_env, content_root, "branch", "start", "stale root")
+
+    assert reply.returncode == 1
+    error = json.loads(reply.stdout)["error"]
+    assert "configured path no longer exists" in error
+    assert str(missing) in error
+
+
+def test_branch_start_fails_clearly_without_any_edcopilot_root(tmp_path):
+    content_root, _, env = _environment(tmp_path)
+    bare_env = {
+        key: value
+        for key, value in env.items()
+        if key != "EDCG_EDCOPILOT_ROOT"
+    }
+
+    reply = _cli(bare_env, content_root, "branch", "start", "no root")
+
+    assert reply.returncode == 1
+    error = json.loads(reply.stdout)["error"]
+    assert "without a configured EDCoPilot root" in error
+
+
 def test_branch_finalize_push_flag_reports_failure(
     monkeypatch, tmp_path, capsys
 ):

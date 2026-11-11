@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from edcg import cli
+from edcg import __version__, cli
 from edcg.content.custom_file import CUSTOM_FILE_NAME, VERSION
 from edcg.facts.facts import LandableStation, SystemFacts
 from edcg.facts.raven import RavenSystem
@@ -174,9 +174,13 @@ def test_unknown_command_is_a_usage_error():
     assert result.returncode == 2
 
 
-def test_version_prints_the_version_string(capsys):
+def test_version_prints_the_release_version(capsys):
     assert cli.main(["version"]) == 0
-    assert capsys.readouterr().out.strip() == VERSION
+    assert capsys.readouterr().out.strip() == __version__
+    assert __version__ == "1.0.0"
+    # The provenance string written into the custom file stays pinned to the
+    # old package version and is deliberately distinct from the release.
+    assert VERSION == "0.1.0"
 
 
 def test_get_template_prints_the_dossier_template(capsys):

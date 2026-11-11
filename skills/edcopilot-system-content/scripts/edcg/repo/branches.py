@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import os
+import re
 import shutil
 import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Mapping, Optional
 
-from edcg.common.config import get_config
+from edcg.common.config import ConfigError, get_config, resolve_edcopilot_root
 from edcg.repo.gitrepo import GitRepo
 
 
@@ -23,6 +25,56 @@ from edcg.repo.gitrepo import GitRepo
 # decide status, finalize, abort or review.
 _active_branch: str | None = None
 _branch_systems: set[str] = set()
+
+
+# Only branches this workflow creates are workflow branches. ``slugify_branch_name``
+# emits ``gen/<slug>`` and appends ``-YYYYMMDDTHHMMSSZ`` on a collision. Any other
+# non-default checkout (a human's ``release`` branch, for example) is foreign.
+_MANAGED_BRANCH_RE = re.compile(
+    r"^gen/[a-z0-9]+(?:-[a-z0-9]+)*(?:-[0-9]{8}T[0-9]{6}Z)?$"
+)
+
+
+def is_managed_branch(name: Optional[str]) -> bool:
+    """True only for branch names the workflow itself generates (``gen/...``)."""
+    return isinstance(name, str) and bool(_MANAGED_BRANCH_RE.match(name))
+
+
+def resolve_runtime_root(config, env: Optional[Mapping[str, str]] = None) -> Path:
+    """Resolve EDCoPilot's root for a branch operation.
+
+    Branch commands touch the runtime repository, so they follow the same D5
+    precedence as every other runtime-touching command: the environment
+    variable, then ``roots.edcopilot`` in the content repository's config file,
+    then asking the caller. A stale stored path fails loudly and by name; an
+    unconfigured root fails with a clear message instead of silently omitting
+    the runtime repository.
+
+    An explicitly injected config (tests patch ``get_config``) may still carry
+    an existing ``edcopilot_root``; it is accepted only when it is a directory.
+    """
+    content_root = getattr(config, "content_definitions_root", None)
+    env_map = os.environ if env is None else env
+
+    if content_root is not None:
+        resolved = resolve_edcopilot_root(content_root, env_map)
+        if resolved.path is not None:
+            return resolved.path
+        if resolved.stale is not None:
+            raise ConfigError(
+                "EDCoPilot root is unusable: configured path no longer exists: "
+                f"{resolved.stale}. Update roots.edcopilot in the config file or "
+                "set EDCG_EDCOPILOT_ROOT."
+            )
+
+    fallback = getattr(config, "edcopilot_root", None)
+    if fallback is not None and Path(fallback).is_dir():
+        return Path(fallback)
+
+    raise ConfigError(
+        "Cannot proceed without a configured EDCoPilot root: set "
+        "EDCG_EDCOPILOT_ROOT or store roots.edcopilot in the config file"
+    )
 
 
 def _is_repo(root) -> bool:
@@ -51,16 +103,22 @@ def _default_branch_for(repo: GitRepo) -> str:
     return db or "main"
 
 
-def _branch_state(config) -> tuple[Optional[str], str, str]:
+def _branch_state(
+    config, runtime_root: Optional[Path] = None
+) -> tuple[Optional[str], str, str]:
     """Derive the active branch from the two repositories.
 
-    The active branch is the content repository's current branch when it is not
-    that repository's default branch, and (when the runtime root is a git
-    repository) the runtime repository is on the same branch. Returns
+    The active branch is the content repository's current branch when it is a
+    workflow branch (``gen/...``), not that repository's default branch, and
+    (when the runtime root is a git repository) the runtime repository is on
+    the same branch. A foreign non-default checkout is reported through
+    ``content_current_branch`` but is never treated as the active workflow
+    branch. Returns
     ``(active_branch, content_current_branch, runtime_current_branch)``.
     """
     content_root = config.content_definitions_root
-    runtime_root = config.edcopilot_root
+    if runtime_root is None:
+        runtime_root = resolve_runtime_root(config)
 
     content_branch = ""
     content_default = ""
@@ -83,13 +141,33 @@ def _branch_state(config) -> tuple[Optional[str], str, str]:
 
     active: Optional[str] = None
     if (
-        isinstance(content_branch, str)
-        and content_branch
+        is_managed_branch(content_branch)
         and content_branch != content_default
         and (not runtime_is_git or runtime_branch == content_branch)
     ):
         active = content_branch
     return active, content_branch, runtime_branch
+
+
+def _foreign_checkout(content_branch: str, content_default: str) -> bool:
+    """True when the content repo sits on a non-default branch we did not make."""
+    return (
+        isinstance(content_branch, str)
+        and bool(content_branch)
+        and content_branch != content_default
+        and not is_managed_branch(content_branch)
+    )
+
+
+def _default_branch_of(root) -> str:
+    """The default branch of ``root``, or ``""`` when it is not a repository."""
+    if not _is_repo(root):
+        return ""
+    repo = GitRepo(root)
+    try:
+        return _default_branch_for(repo)
+    finally:
+        repo.close()
 
 
 @dataclass
@@ -140,6 +218,9 @@ class BranchStatus:
     content_uncommitted: bool = False
     runtime_uncommitted: bool = False
     has_uncommitted_changes: bool = False
+    # True when the content repo is on a non-default branch the workflow did
+    # not generate (for example a human's ``release`` checkout).
+    foreign_checkout: bool = False
     systems_affected: list[str] = field(default_factory=list)
     affected_systems: list[str] = field(default_factory=list)
     systems: list[str] = field(default_factory=list)
@@ -225,7 +306,7 @@ def start_branch(description: Optional[str] = None) -> BranchResult:
     # Collision handling: check existing branches across repos
     existing_branches: set[str] = set()
     content_root = config.content_definitions_root
-    runtime_root = config.edcopilot_root
+    runtime_root = resolve_runtime_root(config)
     for root in (content_root, runtime_root):
         if _is_repo(root):
             r = GitRepo(root)
@@ -318,13 +399,15 @@ def start_branch(description: Optional[str] = None) -> BranchResult:
 def branch_status() -> BranchStatus:
     """Return the current branch orchestration status."""
     global _active_branch, _branch_systems
-    
+
     config = get_config()
 
     content_root = config.content_definitions_root
-    runtime_root = config.edcopilot_root
+    runtime_root = resolve_runtime_root(config)
 
-    active_branch, content_branch, runtime_branch = _branch_state(config)
+    active_branch, content_branch, runtime_branch = _branch_state(
+        config, runtime_root
+    )
     content_status: dict = {"staged": [], "unstaged": [], "untracked": [], "clean": True}
     runtime_status: dict = {"staged": [], "unstaged": [], "untracked": [], "clean": True}
 
@@ -359,6 +442,9 @@ def branch_status() -> BranchStatus:
         content_uncommitted=content_uncommitted,
         runtime_uncommitted=runtime_uncommitted,
         has_uncommitted_changes=has_uncommitted,
+        foreign_checkout=_foreign_checkout(
+            content_branch, _default_branch_of(content_root)
+        ),
         systems_affected=sorted(_branch_systems),
     )
 
@@ -371,15 +457,16 @@ def finalize_branch(merge: bool = True, push: bool = False) -> FinalizeResult:
     session stays on the feature branch for further editing.
     """
     global _active_branch, _branch_systems
-    
+
     config = get_config()
+    runtime_root = resolve_runtime_root(config)
     # The repositories are the state; the process mirror is never consulted.
-    branch = _branch_state(config)[0]
+    branch = _branch_state(config, runtime_root)[0]
 
     if not merge:
         # Stay on the feature branch; ensure checked out where possible
         if branch:
-            for root in (config.content_definitions_root, config.edcopilot_root):
+            for root in (config.content_definitions_root, runtime_root):
                 if _is_repo(root):
                     repo = GitRepo(root)
                     try:
@@ -408,11 +495,11 @@ def finalize_branch(merge: bool = True, push: bool = False) -> FinalizeResult:
     push_requested = bool(push)
     push_attempted: list[str] = []
     push_succeeded: list[str] = []
-    
-    for root, flag_name in ((config.content_definitions_root, "content"), (config.edcopilot_root, "runtime")):
+
+    for root, flag_name in ((config.content_definitions_root, "content"), (runtime_root, "runtime")):
         if not _is_repo(root) or not branch:
             continue
-            
+
         repo = GitRepo(root)
         try:
             default = _default_branch_for(repo)
@@ -421,7 +508,7 @@ def finalize_branch(merge: bool = True, push: bool = False) -> FinalizeResult:
                 if branch in repo.list_branches():
                     if default != branch:
                         repo.checkout(default)
-                
+
                 # merge into default branch
                 try:
                     if not repo.status().get("clean", True):
@@ -441,7 +528,7 @@ def finalize_branch(merge: bool = True, push: bool = False) -> FinalizeResult:
                         pass
                     merge_errors.append(f"{flag_name}: {exc}")
                     failed_repos.append(flag_name)
-                    
+
                 # push the default branch (if requested), reporting the truth
                 if push_requested:
                     push_attempted.append(flag_name)
@@ -484,15 +571,16 @@ def abort_branch(confirm: bool = False) -> AbortResult:
     returns to the default branch.
     """
     global _active_branch, _branch_systems
-    
+
     config = get_config()
+    runtime_root = resolve_runtime_root(config)
     # The repositories are the state; the process mirror is never consulted.
-    branch = _branch_state(config)[0]
+    branch = _branch_state(config, runtime_root)[0]
 
     # Determine what would be discarded (commits on branch not on default)
     would_discard: list = []
     if branch:
-        for root in (config.content_definitions_root, config.edcopilot_root):
+        for root in (config.content_definitions_root, runtime_root):
             if not _is_repo(root):
                 continue
             repo = GitRepo(root)
@@ -525,7 +613,7 @@ def abort_branch(confirm: bool = False) -> AbortResult:
     # confirm=True: delete branch in both repos
     content_discarded = False
     runtime_discarded = False
-    for root, flag_name in ((config.content_definitions_root, "content"), (config.edcopilot_root, "runtime")):
+    for root, flag_name in ((config.content_definitions_root, "content"), (runtime_root, "runtime")):
         if not _is_repo(root) or not branch:
             continue
         repo = GitRepo(root)
@@ -564,19 +652,19 @@ def abort_branch(confirm: bool = False) -> AbortResult:
         content_discarded=content_discarded,
         runtime_discarded=runtime_discarded,
         confirmed=True,
-        message="branch discarded",
+        message="branch discarded" if branch else "no active branch; nothing to discard",
     )
 
 
 def review_branch() -> str:
     """Return a summary of the changes in the active branch."""
-    
+
     config = get_config()
 
     content_root = config.content_definitions_root
-    runtime_root = config.edcopilot_root
+    runtime_root = resolve_runtime_root(config)
 
-    branch_name = _branch_state(config)[0]
+    branch_name = _branch_state(config, runtime_root)[0]
 
     # Content repo diff
     content_files: list[str] = []
@@ -677,5 +765,5 @@ def review_branch() -> str:
     else:
         lines.append("(none)")
     lines.append("")
-    
+
     return "\n".join(lines)

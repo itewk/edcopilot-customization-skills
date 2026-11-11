@@ -265,6 +265,22 @@ class TestInaraClient:
         client = InaraClient("test-key", max_retries=5)
         assert client.max_retries == 5
 
+    @pytest.mark.asyncio
+    async def test_client_does_not_follow_redirects(self):
+        """A redirect must not replay the API-key-bearing POST cross-origin."""
+        client = InaraClient("test-key")
+        async with client as active:
+            assert active._client.follow_redirects is False
+
+    @pytest.mark.asyncio
+    async def test_client_is_built_with_follow_redirects_false(self):
+        with patch("edcg.facts.inara.httpx.AsyncClient") as mock_class:
+            mock_class.return_value = AsyncMock()
+            client = InaraClient("test-key")
+            await client._ensure_client()
+
+        assert mock_class.call_args.kwargs["follow_redirects"] is False
+
 
 class TestInaraClientIntegration:
     """Integration tests for InaraClient (require network and API key)."""

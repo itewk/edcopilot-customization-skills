@@ -52,7 +52,7 @@ Test tone.
 
 ## 7. Coverage
 
-Primary Improbable Discoveries · Infinite Redshirts · Cold Probabilities · 
+Primary Improbable Discoveries · Infinite Redshirts · Cold Probabilities ·
 Refined Industrial Probabilities · Plundered Probabilities · Probably Redshirts
 
 ## 8. Writing rules
@@ -83,25 +83,25 @@ class TestSaveDefinitionTool:
         tmpdir = tempfile.mkdtemp()
         repo_path = Path(tmpdir) / "edcopilot-content-definitions"
         repo_path.mkdir(parents=True)
-        
+
         # Initialize git repo
         import subprocess
         subprocess.run(["git", "init"], cwd=repo_path, check=True, capture_output=True)
         subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_path, check=True, capture_output=True)
         subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_path, check=True, capture_output=True)
-        
+
         # Create systems directory
         systems_dir = repo_path / "systems"
         systems_dir.mkdir(parents=True)
-        
+
         # Create initial commit so repo has HEAD
         readme = repo_path / "README.md"
         readme.write_text("# Test Content Definitions")
         subprocess.run(["git", "add", "README.md"], cwd=repo_path, check=True, capture_output=True)
         subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=repo_path, check=True, capture_output=True)
-        
+
         yield repo_path
-        
+
         # Cleanup
         shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -137,7 +137,7 @@ class TestSaveDefinitionTool:
         systems_dir = mock_config.content_definitions_root / "systems"
         dossier_file = systems_dir / "test-system.md"
         rules_file = systems_dir / "test-system.rules.toml"
-        
+
         assert dossier_file.exists()
         assert rules_file.exists()
 
@@ -187,7 +187,7 @@ class TestSaveDefinitionTool:
     def test_save_definition_update_existing_system(self, mock_config, temp_content_definitions):
         """Test that updating an existing system uses 'update' in commit message."""
         import subprocess
-        
+
         # First, create the system files (simulate existing system)
         systems_dir = temp_content_definitions / "systems"
         dossier_file = systems_dir / "test-system.md"
@@ -252,7 +252,7 @@ voices = ["Voice1"]
             systems_dir = mock_config.content_definitions_root / "systems"
             assert (systems_dir / f"{expected_slug}.md").exists(), f"Failed for {system_name}"
             assert (systems_dir / f"{expected_slug}.rules.toml").exists(), f"Failed for {system_name}"
-            
+
             # Clean up for next iteration
             (systems_dir / f"{expected_slug}.md").unlink()
             (systems_dir / f"{expected_slug}.rules.toml").unlink()
@@ -271,7 +271,7 @@ voices = ["Voice1"]
 
         assert isinstance(result.files_changed, list)
         assert len(result.files_changed) >= 2
-        
+
         # Should contain the two files we created
         file_names = [Path(f).name for f in result.files_changed]
         assert "test-system.md" in file_names
@@ -316,7 +316,7 @@ voices = ["Voice1"]
         """Test that save_definition uses the GitRepo wrapper."""
         from edcg.repo.gitrepo import GitRepo
         from unittest.mock import MagicMock
-        
+
         # We can verify by checking that a commit was made via the wrapper
         with patch("edcg.repo.dossier.get_config", return_value=mock_config):
             with patch("edcg.repo.dossier.GitRepo") as mock_git_repo_class:
@@ -325,7 +325,7 @@ voices = ["Voice1"]
                 mock_repo.commit = MagicMock(return_value="abc12345")
                 mock_repo.status = MagicMock(return_value={"staged": [], "unstaged": [], "untracked": [], "clean": False})
                 mock_git_repo_class.return_value = mock_repo
-                
+
                 result = save_definition(
                     system_name="Test System",
                     dossier_md=VALID_DOSSIER,
