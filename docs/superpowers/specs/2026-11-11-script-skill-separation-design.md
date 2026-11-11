@@ -141,10 +141,45 @@ A new guard test: no `.py` file under `scripts/` contains the string
 - Whether `docs/backlog.md` items referencing `assets/base.toml` paths need
   re-pointing (they do; do it in the same change).
 
-## Open questions for the human (resolved)
+### D7. The example's stale header is corrected in this change (builder-check ruling)
 
-- Rule-data home: `scripts/edcg/rules/data/` — confirmed by the human
-  (2026-11-11).
-- House-rules copy owner: the agent, with a review step — confirmed by the
-  human (2026-11-11).
-- Route: full spec/plan (this document) — confirmed by the human.
+`assets/all.rules.toml.example`'s header comment still says the base rule set
+is `rules/base.toml in the installed package` (backlog item 23). Since the new
+review step walks the user through this exact file, its header is corrected
+now to point at `scripts/edcg/rules/data/base.toml`. The byte-for-byte
+constraint covers only the three rule TOMLs — the example is a prose starter
+and may be edited.
+
+### D8. The init skeleton commit contains the config file only (builder-check ruling)
+
+`systems/` is created on disk but git cannot track an empty directory; no
+`.gitkeep` placeholder is added (the house-rules file arrives immediately in
+setup and makes the directory tracked). The skeleton commit stages only the
+config file — never `repo.add("systems")` with a no-match pathspec. The JSON
+`created` list reports filesystem creations (config, `systems/`); the commit
+holds the config file.
+
+### D9. The reviewed house rules ride in the first content commit (builder-check ruling)
+
+No new command and no new commit subject: after the agent copies and reviews
+`systems/all.rules.toml`, the file rides into the first content commit —
+exactly the old behavior, where the user's edited house rules were swept into
+`edcg: content <system>` by the writer's staging parity. SKILL.md's setup step
+says so explicitly, so the setup state does not silently disappear into an
+unexpected commit.
+
+### D10. Promote an in-repo example before copying from assets (builder-check ruling)
+
+A repository bootstrapped by the current `init` can hold
+`systems/all.rules.toml.example` with no `systems/all.rules.toml`. The agent
+step becomes: if `all.rules.toml` is missing and an in-repo
+`all.rules.toml.example` exists, promote it (copy it — it may hold user
+edits) and delete the now-redundant `.example`; only when neither exists copy
+from `assets/all.rules.toml.example`. The review step follows in both cases.
+
+## Builder-check resolutions (2026-11-11)
+
+- Rule-data home: scripts/edcg/rules/data/ - confirmed by the human.
+- House-rules copy owner: the agent, with a review step - confirmed by the human.
+- Route: full spec/plan - confirmed by the human.
+- D7-D10: builder-check rulings recorded above; no open questions remain for the human.
