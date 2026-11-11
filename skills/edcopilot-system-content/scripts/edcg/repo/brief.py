@@ -17,7 +17,7 @@ from edcg.common.config import Config
 from edcg.content.rewrite import _slugify
 from edcg.facts.facts import SystemFacts, compute_facts_diff
 from edcg.rules.validation import (
-    RULES_DIR,
+    RULE_DATA_DIR,
     _extract_site_table,
     _extract_stations_from_section_7,
     _extract_voices_from_section_8,
@@ -203,7 +203,7 @@ def writing_brief_data(config: Config, system_name: str) -> dict:
         if rev_match:
             raven_revision = int(rev_match.group(1))
 
-    base = load_base_config(RULES_DIR)
+    base = load_base_config(RULE_DATA_DIR)
     bounds_kinds, bounds_stations = resolve_bounds(base, system_rules)
 
     return {

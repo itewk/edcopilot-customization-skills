@@ -9,8 +9,8 @@ import tomllib
 from pathlib import Path
 from typing import Any, cast
 
-# The assets folder sits beside the skill's scripts/ directory.
-_ASSETS_DIR = Path(__file__).resolve().parents[3] / "assets"
+# Rule data ships beside the engine as package data.
+RULE_DATA_DIR = Path(__file__).resolve().parent / "data"
 
 # Lazy-loaded cached resources
 _base_rules: dict[str, Any] | None = None
@@ -19,8 +19,8 @@ _raven_config: dict[str, Any] | None = None
 
 
 def _load_toml_asset(filename: str) -> dict[str, Any]:
-    """Load a TOML file from the skill's assets folder."""
-    with (_ASSETS_DIR / filename).open("rb") as f:
+    """Load a TOML file from the rule data directory."""
+    with (RULE_DATA_DIR / filename).open("rb") as f:
         return tomllib.load(f)
 
 

@@ -16,7 +16,7 @@ from edcg.common.config import Config, load_config, resolve_edcopilot_root
 from edcg.content.custom_file import CUSTOM_FILE_NAME, _collapse_provenance
 from edcg.rules.validation import (
     PROVENANCE_RE,
-    RULES_DIR,
+    RULE_DATA_DIR,
     load_base_config,
     load_kinds,
     parse_content,
@@ -172,7 +172,7 @@ def get_system_content(
         return {"system_name": system_name, "tags": []}
 
     custom_file = root / CUSTOM_FILE_NAME
-    base = load_base_config(RULES_DIR)
+    base = load_base_config(RULE_DATA_DIR)
     kinds, stations = _system_bounds(system_name, config, base)
 
     if not custom_file.is_file():

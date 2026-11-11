@@ -16,8 +16,8 @@ from edcg.rules.validation import (
 )
 
 
-# The rule assets ship beside the skill's scripts/ directory.
-ASSETS_DIR = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets"
+# The rule data ships beside the skill's scripts/ directory.
+RULE_DATA_DIR = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "scripts" / "edcg" / "rules" / "data"
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
 
@@ -27,8 +27,8 @@ FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
 @pytest.fixture
 def base_rules_path() -> Path:
-    """Path to base.toml in the skill's assets."""
-    return ASSETS_DIR / "base.toml"
+    """Path to base.toml in the rule data dir."""
+    return RULE_DATA_DIR / "base.toml"
 
 
 @pytest.fixture
@@ -1243,7 +1243,7 @@ Line 2.
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
         from edcg.rules.validation import load_base_config
-        base = load_base_config(ASSETS_DIR)
+        base = load_base_config(RULE_DATA_DIR)
         kinds = load_kinds(base)
         from edcg.rules.validation import PROVENANCE_RE
         content_obj = parse_content(content_file, PROVENANCE_RE, kinds)
@@ -1265,7 +1265,7 @@ Authored line.
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
         from edcg.rules.validation import load_base_config, PROVENANCE_RE
-        base = load_base_config(ASSETS_DIR)
+        base = load_base_config(RULE_DATA_DIR)
         kinds = load_kinds(base)
         content_obj = parse_content(content_file, PROVENANCE_RE, kinds)
         
