@@ -40,7 +40,9 @@ def is_managed_branch(name: Optional[str]) -> bool:
     return isinstance(name, str) and bool(_MANAGED_BRANCH_RE.match(name))
 
 
-def resolve_runtime_root(config, env: Optional[Mapping[str, str]] = None) -> Path:
+def resolve_runtime_root(
+    config=None, env: Optional[Mapping[str, str]] = None
+) -> Path:
     """Resolve EDCoPilot's root for a branch operation.
 
     Branch commands touch the runtime repository, so they follow the same D5
@@ -50,11 +52,25 @@ def resolve_runtime_root(config, env: Optional[Mapping[str, str]] = None) -> Pat
     unconfigured root fails with a clear message instead of silently omitting
     the runtime repository.
 
-    An explicitly injected config (tests patch ``get_config``) may still carry
-    an existing ``edcopilot_root``; it is accepted only when it is a directory.
+    When ``config`` is supplied it is authoritative: its ``edcopilot_root``
+    (which the CLI builds from ``EDCG_EDCOPILOT_ROOT``) is trusted without
+    consulting the ambient environment, so tests that inject a config are
+    hermetic. Only a caller that passes no config at all falls back to reading
+    ``env``/``os.environ``.
     """
+    if config is None:
+        env_map = os.environ if env is None else env
+        config = get_config(env_map)
+    else:
+        env_map = {}
+
     content_root = getattr(config, "content_definitions_root", None)
-    env_map = os.environ if env is None else env
+    injected = getattr(config, "edcopilot_root", None)
+
+    # A config's own root wins outright when it is usable; this is also the
+    # environment value on the CLI path, since load_config takes it from there.
+    if injected is not None and Path(injected).is_dir():
+        return Path(injected)
 
     if content_root is not None:
         resolved = resolve_edcopilot_root(content_root, env_map)
@@ -67,9 +83,12 @@ def resolve_runtime_root(config, env: Optional[Mapping[str, str]] = None) -> Pat
                 "set EDCG_EDCOPILOT_ROOT."
             )
 
-    fallback = getattr(config, "edcopilot_root", None)
-    if fallback is not None and Path(fallback).is_dir():
-        return Path(fallback)
+    if injected is not None:
+        raise ConfigError(
+            "EDCoPilot root is unusable: EDCG_EDCOPILOT_ROOT is set to "
+            f"'{injected}' but it is not an existing directory; set a valid "
+            "path or store [roots] edcopilot in the config file"
+        )
 
     raise ConfigError(
         "Cannot proceed without a configured EDCoPilot root: set "

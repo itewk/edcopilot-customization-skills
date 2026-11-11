@@ -66,7 +66,7 @@ The trailers must be adjacent in the commit message.
 
 ### Known Test Outcomes
 
-- Full suite: 668 passed, 10 skipped
+- Full suite: 682 passed, 10 deselected
 - Hermetic subset: passes without network or EDCoPilot integration
 
 ## Adding a Skill

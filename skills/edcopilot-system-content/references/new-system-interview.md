@@ -218,7 +218,7 @@ Once `validate-definition` returns `passed: true`, persist the artifacts:
    ```
 
 2. What it does: writes `systems/<slug>.md` and `systems/<slug>.rules.toml`,
-   creates the commit `edcg: scaffold <system> - <summary>`, adds the
+   creates the commit `edcg: scaffold <system> — <summary>`, adds the
    `Co-authored-by:` trailer supplied in `commit_co_author`, and returns the
    commit hash and files changed.
 3. Verify the commit in the content repository with

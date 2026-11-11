@@ -243,8 +243,8 @@ class TestBodyShape:
     def test_commit_subjects_match_the_scripts(self):
         _, body = _body()
         text = "\n".join(body)
-        assert "edcg: scaffold <system> - <summary>" in text
-        assert "edcg: update <system> - <summary>" in text
+        assert "edcg: scaffold <system> — <summary>" in text
+        assert "edcg: update <system> — <summary>" in text
         assert "edcg: markdb add <n> tag(s)" in text
         assert "edcg: markdb remove <n> tag(s)" in text
 

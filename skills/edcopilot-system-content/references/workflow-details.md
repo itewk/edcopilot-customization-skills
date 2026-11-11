@@ -133,8 +133,8 @@ a branch the user did not ask for.
 - A design or update cycle leaves exactly **three commits** in the runtime
   repository: content, marker add, marker remove. The content repository gets
   one commit per saved definition.
-- Subjects: `edcg: scaffold <system> - <summary>` and
-  `edcg: update <system> - <summary>` for definitions, `edcg: content <system>`
+- Subjects: `edcg: scaffold <system> — <summary>` and
+  `edcg: update <system> — <summary>` for definitions, `edcg: content <system>`
   for content, `edcg: markdb add <n> tag(s)` and `edcg: markdb remove <n> tag(s)`
   for markers (the tag list goes in the commit body).
 - Every commit names its producer through a `Co-authored-by:` trailer. Pass the
