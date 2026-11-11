@@ -136,9 +136,9 @@ Items marked **(gate)** must pass before tagging `v1.0.0`.
 22. Docstrings that outlived their wording: `repo/dossier.py` subject-format
     docstring; `repo/logs.py` cycle vocabulary; audit any remaining
     "nothing refuses" absolutes in module docstrings (SKILL.md was corrected).
-23. `assets/all.rules.toml.example` says the base rule set lives at
-    `rules/base.toml in the installed package`; it is `assets/base.toml` in the
-    skill.
+23. **Resolved.** `assets/all.rules.toml.example` said the base rule set lived
+    at `rules/base.toml in the installed package`; it was `assets/base.toml` in
+    the skill, and is now `scripts/edcg/rules/data/base.toml`.
 24. Reference-internal links use bare sibling filenames (correct on disk) while
     the spec's recommendation is root-relative paths. Align or record the
     deviation.

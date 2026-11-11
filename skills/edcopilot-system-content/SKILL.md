@@ -36,15 +36,27 @@ advisory, and the agent's discipline carries them.
    state. If `doctor` reports the root as `blank`, do not invent a layout:
    confirm with the user first ("this directory isn't a content repository yet
    — set one up here?"), then run `edcg.py init`. It writes the config file, a
-   `systems/` directory, the rules example and, unless `--no-git` is passed, an
-   initial commit. Offer `--no-git` when the user does not want a repository.
-3. **Establish the EDCoPilot root.** EDCoPilot's "User custom files" folder is
+   `systems/` directory and, unless `--no-git` is passed, an initial commit. Offer
+   `--no-git` when the user does not want a repository.
+3. **Adopt the house rules.** If `systems/all.rules.toml` does not exist: if
+   `systems/all.rules.toml.example` exists (a legacy scaffold), promote it —
+   copy it to `systems/all.rules.toml` and delete the redundant example;
+   otherwise copy
+   [`assets/all.rules.toml.example`](assets/all.rules.toml.example) →
+   `systems/all.rules.toml`. Then review the rules with the user — walk each
+   section the example contains (logo, banned filters, conversation floors)
+   and let them modify, add, or remove before any content work. The house-rules
+   file rides into the first definition commit the workflow makes (`edcg:
+   scaffold` or `edcg: update`). For an existing repository with house rules
+   already in place, this step is a reminder that house-rule changes are
+   deliberate edits with their reasons.
+4. **Establish the EDCoPilot root.** EDCoPilot's "User custom files" folder is
    resolved from `EDCG_EDCOPILOT_ROOT`, then from `roots.edcopilot` in the
    content repository's config file, then by asking the user. Ask now if it is
    unresolved, and store the answer in the config file when it is stable; never
    guess a path into a game installation. If `doctor` warns that the folder does
    not look right, confirm the path with the user before proceeding.
-4. **Re-run `doctor`.** Require every check to pass before any content work.
+5. **Re-run `doctor`.** Require every check to pass before any content work.
    The environment-variable reference is the "Environment variables" section of
    [`references/workflow-details.md`](references/workflow-details.md).
 

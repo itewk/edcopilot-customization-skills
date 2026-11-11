@@ -16,7 +16,7 @@ why = "Only a station with landing pads can greet a Commander."
 
 | Layer | File | Holds |
 |---|---|---|
-| base | the skill's `assets/base.toml` | Tool-wide defaults and the dossier spine. Not copied into the content repository. |
+| base | the skill's `scripts/edcg/rules/data/base.toml` | Tool-wide defaults and the dossier spine. Not copied into the content repository. |
 | house | `systems/all.rules.toml` | Project policy for every system: image style, banned filters, extra rules. |
 | system | `systems/<slug>.rules.toml` | What one system overrides or adds. |
 

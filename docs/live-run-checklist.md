@@ -22,13 +22,25 @@ Commands are shown as `edcg.py <subcommand>`, run from the content root as
       - [ ] A `FAIL` carries its `fix:` hint, and you relay every one of them.
       - [ ] The content root is reported `blank`.
 - [ ] Run `edcg.py init`.
-      - [ ] It writes the config file, `systems/`, and the rules example.
+      - [ ] It writes the config file and `systems/` — nothing else; it does not
+            copy the house-rules example.
       - [ ] It makes an initial commit unless `--no-git` was passed.
       - [ ] `git log` at the content root shows that commit, and `git status` is
             clean.
       - [ ] With `--no-git` the content root is not a git repository, so no step
             in this checklist commits. Say so before starting, and skip the
             commit checks below.
+- [ ] Adopt the house rules before any content work.
+      - [ ] If `systems/all.rules.toml` does not exist: if a legacy
+            `systems/all.rules.toml.example` exists, promote it — copy it to
+            `systems/all.rules.toml` and delete the redundant example;
+            otherwise copy `assets/all.rules.toml.example` →
+            `systems/all.rules.toml`.
+      - [ ] The rules are reviewed with the user — each section the example
+            contains (logo, banned filters, conversation floors); they may
+            modify, add or remove a rule.
+      - [ ] The reviewed file rides into the first definition commit the
+            workflow makes (`edcg: scaffold` or `edcg: update`).
 - [ ] Run `edcg.py doctor` again.
       - [ ] The content root is no longer `blank`.
       - [ ] The `EDCoPilot root` check is `OK`, and the line names the source the
@@ -101,6 +113,8 @@ only when it is a repository.
       - [ ] One commit in the runtime repository, subject
             `edcg: content <system>`.
       - [ ] The block carries its provenance marker, and the file uses CRLF.
+      - [ ] In the content repository: `systems/all.rules.toml` is tracked and
+            present at HEAD (it landed with the definition commit).
 - [ ] Run `edcg.py markdb add` with the tags to stage.
       - [ ] One commit in the runtime repository, subject
             `edcg: markdb add <n> tag(s)`.

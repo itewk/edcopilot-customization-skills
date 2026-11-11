@@ -62,12 +62,13 @@ Use tokens, never a literal player name.
 
 **Never write 'Commander' literally** in authored prose; use the token. Do not
 write a real player name either. The vocabulary is `[vocab]` in this skill's
-`assets/base.toml`: `[vocab.documented]` lists `<Commander>`, `<cmdrname>`,
-`<myshipname>`, `<fuelLevels>`, `<starsystem>`, `<stationname>` and the rest,
-with what EDCoPilot substitutes for each. `[vocab.undocumented]` lists tokens
-EDCoPilot's own content uses without documenting them (`<systemname>`,
-`<bodyName>`, `<ship1>`, `<greeting>` and so on). Prefer the documented tokens;
-use an undocumented one only to match the game's own phrasing.
+`scripts/edcg/rules/data/base.toml`: `[vocab.documented]` lists `<Commander>`,
+`<cmdrname>`, `<myshipname>`, `<fuelLevels>`, `<starsystem>`, `<stationname>`
+and the rest, with what EDCoPilot substitutes for each. `[vocab.undocumented]`
+lists tokens EDCoPilot's own content uses without documenting them
+(`<systemname>`, `<bodyName>`, `<ship1>`, `<greeting>` and so on). Prefer the
+documented tokens; use an undocumented one only to match the game's own
+phrasing.
 
 ## FILTER REQUIREMENTS
 
@@ -99,7 +100,7 @@ those markers are forbidden in authored content regardless of the wording.
 
 ### All known filters
 
-`[rules.syntax.filter_known]` in `assets/base.toml` lists the known filter
+`[rules.syntax.filter_known]` in `scripts/edcg/rules/data/base.toml` lists the known filter
 markers with their meanings. Use only markers from that list, and only where the
 content needs them.
 
@@ -108,10 +109,10 @@ content needs them.
 - House rules for this content repository: `systems/all.rules.toml`. That is
   where the banned-filter list, the image style and any project policy live.
 - Tool-wide rules, `[rules.syntax.filter_known]` and the `[vocab]`
-  documented/undocumented lists: this skill's `assets/base.toml`.
+  documented/undocumented lists: this skill's `scripts/edcg/rules/data/base.toml`.
 - One system's overrides: `systems/<slug>.rules.toml`.
 - The per-kind bounds: in the `writing-brief-data` output, resolved from the
-  system rules and `assets/base.toml`.
+  system rules and `scripts/edcg/rules/data/base.toml`.
 
 ## RULE POINTERS
 

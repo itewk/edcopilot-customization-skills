@@ -437,7 +437,7 @@ class TestWritingBrief:
         text = _read(WRITING_BRIEF)
         lowered = text.lower()
         assert "systems/all.rules.toml" in text
-        assert "assets/base.toml" in text
+        assert "scripts/edcg/rules/data/base.toml" in text
         assert "[rules.syntax.filter_known]" in text
         assert "systems/<slug>.rules.toml" in text
         assert "writing-brief-data" in text

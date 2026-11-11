@@ -102,8 +102,8 @@ SKILL.md Setup gains a step (after the content-root step, before the
 first interview): if `systems/all.rules.toml` does not exist, copy
 [`assets/all.rules.toml.example`](assets/all.rules.toml.example) →
 `systems/all.rules.toml`, then review the rules with the user — walk each
-section (logo, banned filters, conversation floors, bounds) and let them
-modify, add, or remove before any content work. For an existing content
+section the example contains (logo, banned filters, conversation floors) and
+let them modify, add, or remove before any content work. For an existing content
 repository the step is a no-op except as a reminder that house-rule changes
 are deliberate edits with their reasons. `docs/live-run-checklist.md` gains
 the same step. `references/rules.md` keeps explaining the layers and points
@@ -159,14 +159,19 @@ config file — never `repo.add("systems")` with a no-match pathspec. The JSON
 `created` list reports filesystem creations (config, `systems/`); the commit
 holds the config file.
 
-### D9. The reviewed house rules ride in the first content commit (builder-check ruling)
+### D9. The reviewed house rules ride in the first definition commit (builder-check ruling)
 
 No new command and no new commit subject: after the agent copies and reviews
-`systems/all.rules.toml`, the file rides into the first content commit —
-exactly the old behavior, where the user's edited house rules were swept into
-`edcg: content <system>` by the writer's staging parity. SKILL.md's setup step
-says so explicitly, so the setup state does not silently disappear into an
-unexpected commit.
+`systems/all.rules.toml`, the file rides into the first definition commit the
+workflow makes — `edcg: scaffold <system>` or `edcg: update <system>`, written
+by `save-definition`, which stages every change in the content repository.
+SKILL.md's setup step says so explicitly, so the setup state does not silently
+disappear into an unexpected commit.
+
+Erratum (2026-11-11): the original D9 said "first content commit";
+`save-definition` runs before `write-content` and stages everything, so the
+destination is the first definition commit. The old implementation had the same
+ordering.
 
 ### D10. Promote an in-repo example before copying from assets (builder-check ruling)
 

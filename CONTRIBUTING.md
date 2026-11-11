@@ -77,7 +77,7 @@ To add a new skill to this repository:
 2. Include `SKILL.md`, `references/`, `assets/`, and `scripts/` folders
 3. The `scripts/` directory should contain Python code implementing the skill's functionality
 4. Run `skills-ref validate skills/<skill-name>` to ensure the new skill is valid
-5. The tool-wide rules in the skill's `assets/base.toml` define the rules for all systems
+5. The tool-wide rules in the skill's `scripts/edcg/rules/data/base.toml` define the rules for all systems
 
 ## Commit Conventions
 
