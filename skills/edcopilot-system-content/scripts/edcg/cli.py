@@ -737,8 +737,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="edcg",
         description="EDCoPilot system-content authoring commands",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Exit codes: 0 success, 1 check failure, 2 usage error.
+
+Major command groups:
+setup: doctor/init
+authoring: gather-facts/validate-definition/save-definition/writing-brief-data/validate-content/write-content/get-content/update-scan/rewrite-tag
+markers: markdb/check-logs
+review: audit/branch
+""",
     )
-    subparsers = parser.add_subparsers(dest="command", metavar="<command>")
+    subparsers = parser.add_subparsers(
+        dest="command",
+        metavar="<command>",
+        help="Available commands; each one's --help documents its flags and examples",
+    )
 
     subparsers.add_parser("doctor", help="Check Python, packages, git and roots")
 
@@ -760,6 +773,17 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser(
         "save-definition",
         help="Save a dossier and rules pair (JSON on stdin)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Example:
+  python edcg.py save-definition < definition.json
+
+Where definition.json is:
+{
+  "system_name": "Test System",
+  "dossier_md": "# Test System - system dossier\\n...",
+  "rules_toml": "[system]\\nnames = [\\"Test System\\"]\\n",
+  "commit_co_author": "<harness> (<models>) <email>"
+}""",
     )
 
     brief_parser = subparsers.add_parser(
@@ -771,7 +795,17 @@ def build_parser() -> argparse.ArgumentParser:
         "validate-content", help="Validate a content block (JSON on stdin)"
     )
     subparsers.add_parser(
-        "write-content", help="Append a content block (JSON on stdin)"
+        "write-content", help="Append a content block (JSON on stdin)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Example:
+  python edcg.py write-content < content.json
+
+Where content.json is:
+{
+  "content_block": "@SystemGreeting<~>Test System\\nHello world.\\n",
+  "system_name": "Test System",
+  "commit_co_author": "<harness> (<models>) <email>"
+}""",
     )
 
     content_parser = subparsers.add_parser(
@@ -783,19 +817,51 @@ def build_parser() -> argparse.ArgumentParser:
         "update-scan", help="Scan every system for fact changes as JSON"
     )
     subparsers.add_parser(
-        "rewrite-tag", help="Rewrite one tag's dialog (JSON on stdin)"
+        "rewrite-tag", help="Rewrite one tag's dialog (JSON on stdin)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Example:
+  python edcg.py rewrite-tag < payload.json
+
+Where payload.json is:
+{
+  "system_name": "Test System",
+  "tag": "@SystemGreeting<~>Test System",
+  "replace": {
+    "Hello world.": "Hi there!"
+  }
+}""",
     )
 
     markdb_parser = subparsers.add_parser(
         "markdb", help="Add or remove UPDATEDB markers"
     )
     markdb_subparsers = markdb_parser.add_subparsers(
-        dest="markdb_command", metavar="add|remove"
+        dest="markdb_command", metavar="add|remove", help="Marker action"
     )
+    markdb_examples = {
+        "add": """Example:
+  python edcg.py markdb add --tag "@SystemGreeting<~>Test System" --tag "@SystemBroadcast<~>Test System"
+
+Or pass the tags as JSON on stdin:
+{
+  "tags": ["@SystemGreeting<~>Test System"],
+  "commit_co_author": "<harness> (<models>) <email>"
+}""",
+        "remove": """Example:
+  python edcg.py markdb remove --tag "@SystemGreeting<~>Test System" --tag "@SystemBroadcast<~>Test System"
+
+Or pass the tags as JSON on stdin:
+{
+  "tags": ["@SystemGreeting<~>Test System"],
+  "commit_co_author": "<harness> (<models>) <email>"
+}""",
+    }
     for action in ("add", "remove"):
         action_parser = markdb_subparsers.add_parser(
             action,
             help=f"{action.capitalize()} UPDATEDB markers for the given tags",
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            epilog=markdb_examples[action],
         )
         action_parser.add_argument(
             "--tag",
@@ -805,7 +871,13 @@ def build_parser() -> argparse.ArgumentParser:
         )
 
     logs_parser = subparsers.add_parser(
-        "check-logs", help="Check EDCoPilot's log after a restart"
+        "check-logs", help="Check EDCoPilot's log after a restart",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Example:
+  python edcg.py check-logs --system "Test System" --since "2026-01-01T00:00:00Z"
+
+If --since is not provided, it defaults to the mtime of the custom file.
+""",
     )
     logs_parser.add_argument(
         "--since", help="ISO 8601 timestamp (default: custom-file mtime)"
@@ -821,7 +893,9 @@ def build_parser() -> argparse.ArgumentParser:
         "branch", help="Two-repository branch orchestration"
     )
     branch_subparsers = branch_parser.add_subparsers(
-        dest="branch_command", metavar="start|status|review|finalize|abort"
+        dest="branch_command",
+        metavar="start|status|review|finalize|abort",
+        help="Branch action",
     )
     start_parser = branch_subparsers.add_parser(
         "start", help="Start a feature branch in both repositories"
@@ -830,7 +904,13 @@ def build_parser() -> argparse.ArgumentParser:
     branch_subparsers.add_parser("status", help="Show branch status")
     branch_subparsers.add_parser("review", help="Review branch changes")
     finalize_parser = branch_subparsers.add_parser(
-        "finalize", help="Merge the feature branch into the default branch"
+        "finalize", help="Merge the feature branch into the default branch",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Example:
+  python edcg.py branch finalize --merge --push
+
+--merge is the default; --no-merge leaves the work on the feature branch.
+""",
     )
     finalize_parser.add_argument(
         "--merge", dest="merge", action="store_true", help="Merge (default)"
@@ -843,7 +923,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     finalize_parser.set_defaults(merge=True, push=False)
     abort_parser = branch_subparsers.add_parser(
-        "abort", help="Discard the feature branch"
+        "abort", help="Discard the feature branch",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Example:
+  python edcg.py branch abort --confirm
+
+Without --confirm it only reports what would be discarded.
+""",
     )
     abort_parser.add_argument(
         "--confirm", action="store_true", help="Actually delete the branch"

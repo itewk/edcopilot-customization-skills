@@ -56,6 +56,8 @@ EDCoPilot must be closed whenever a step writes the custom file or changes
 markers (steps 10, 12 and 16). Ask the user to close it, and to restart it when
 a step calls for a restart.
 
+Run every command from the content root as `python <skill-dir>/scripts/edcg.py <subcommand>`. The top-level `--help` lists every command and the exit codes (0 success, 1 check failure, 2 usage error); each stateful command's `--help` carries a worked example of its payload.
+
 1. **Resume.** Run `edcg.py audit --system <name>` (or `edcg.py update-scan` when facts may have moved). Read the repository state: `systems/`, the custom file, `UPDATEDB` markers, git log.
 2. **Gather facts.** New: `edcg.py gather-facts --system <name>`. When Raven
    has no entry, skip gathering and start the interview from the user's
@@ -75,37 +77,6 @@ a step calls for a restart.
 14. **Check the logs.** `edcg.py check-logs --system <name>`. Show the per-tag report. A failed tag is the user's decision: fix and repeat the cycle, or accept.
 15. **In-game test and upload.** Ask the user to test the content in game and upload the database from inside EDCoPilot. Only after they confirm, clear the markers.
 16. **Clear the markers.** `edcg.py markdb remove --tag <tag> ...`. One commit. Compare `modified_tags` to the tags you passed — a missing tag matched no authored content; stop and reconcile the station/tag name before proceeding. The cycle is complete: exactly three runtime commits (content, marker add, marker remove).
-
-## Commands
-
-Run every command from the content root as
-`python <skill-dir>/scripts/edcg.py <subcommand>`. Data commands print JSON on
-stdout and take their payload as JSON on stdin where noted. Exit codes: `0`
-success, `1` a check failed, `2` usage error.
-
-| Command | Purpose |
-|---|---|
-| `edcg.py doctor` | Check Python, packages, the git binary, git identity and both roots |
-| `edcg.py init` | Scaffold a blank content repository (`--no-git` to skip git) |
-| `edcg.py gather-facts` | One system's facts as JSON (`--system <name>`) |
-| `edcg.py validate-definition` | Validate a dossier and rules pair (JSON stdin) |
-| `edcg.py save-definition` | Save a validated pair and commit (JSON stdin) |
-| `edcg.py writing-brief-data` | Exact tag lines, bounds and voices (`--system <name>`) |
-| `edcg.py validate-content` | Validate a content block (JSON stdin) |
-| `edcg.py write-content` | Append a content block and commit (JSON stdin) |
-| `edcg.py get-content` | Authored tags, lines, counts and bounds (`--system <name>`) |
-| `edcg.py update-scan` | Scan every system for fact changes as JSON |
-| `edcg.py rewrite-tag` | Remove, replace or add lines in one tag (JSON stdin) |
-| `edcg.py markdb add` | Add `UPDATEDB` to the given tags and commit once |
-| `edcg.py markdb remove` | Remove `UPDATEDB` from the given tags and commit once |
-| `edcg.py check-logs` | Read EDCoPilot's log after a restart (`--since`, `--system`) |
-| `edcg.py audit` | Compare a system across the four fact sources (`--system`) |
-| `edcg.py branch start` | Start a feature branch in both repositories |
-| `edcg.py branch status` | Show the active branch and uncommitted changes |
-| `edcg.py branch review` | Print the branch diff for review |
-| `edcg.py branch finalize` | Merge the feature branch (`--merge`, `--push`) |
-| `edcg.py branch abort` | Discard the feature branch (`--confirm` to act) |
-| `edcg.py version` | Print the skill version string |
 
 ## Resume rule
 
