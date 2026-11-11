@@ -12,8 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
-# The assets folder sits beside the skill's scripts/ directory.
-RULES_DIR = Path(__file__).resolve().parents[3] / "assets"
+# Rule data ships beside the validation module as package data.
+RULE_DATA_DIR = Path(__file__).resolve().parent / "data"
 
 # ---------------------------------------------------------------------------
 # Constants and regex patterns
@@ -1285,8 +1285,8 @@ def validate_content(
         ValidationResult with findings. Line numbers in findings are relative to
         the start of the validated block (1 = first line of block).
     """
-    # The rule assets ship beside the skill's scripts/ directory.
-    rules_dir = RULES_DIR
+    # Rule data ships beside the validation module as package data.
+    rules_dir = RULE_DATA_DIR
     if base_rules_path is None:
         base_rules_path = rules_dir / "base.toml"
 
@@ -1539,7 +1539,7 @@ def _extract_site_table(lines: list[str]) -> list[dict]:
 
 def _get_landable_build_types() -> set[str]:
     """Get set of landable build types from build_types.toml."""
-    build_types_data = _load_toml(RULES_DIR / "build_types.toml")
+    build_types_data = _load_toml(RULE_DATA_DIR / "build_types.toml")
     build_types = build_types_data.get("classes", {})
     
     landable = set()

@@ -2,8 +2,8 @@ from pathlib import Path
 
 from edcg.rules.validation import validate_content
 
-# The rule assets ship beside the skill's scripts/ directory.
-BASE = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / "base.toml"
+# The rule data ships beside the engine as package data.
+BASE = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "scripts" / "edcg" / "rules" / "data" / "base.toml"
 SYSTEM = "Test System"
 
 VALID = """<!-- provenance: tool=test model=test -->

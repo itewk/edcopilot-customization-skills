@@ -5,7 +5,7 @@ import pytest
 from edcg.content.markdb import markdb_add, markdb_remove
 from edcg.rules.validation import (
     PROVENANCE_RE,
-    RULES_DIR,
+    RULE_DATA_DIR,
     load_base_config,
     load_kinds,
     parse_content,
@@ -113,7 +113,7 @@ def test_rewritten_file_still_parses(tmp_path):
     path = tmp_path / "content.txt"
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    base = load_base_config(RULES_DIR)
+    base = load_base_config(RULE_DATA_DIR)
     parsed = parse_content(path, PROVENANCE_RE, load_kinds(base))
 
     counts = [
@@ -127,7 +127,7 @@ def test_tag_roundtrip_byte_exact(tmp_path, monkeypatch):
     path = tmp_path / "content.txt"
     path.write_text("\n".join(FILE) + "\n", encoding="utf-8")
 
-    base = load_base_config(RULES_DIR)
+    base = load_base_config(RULE_DATA_DIR)
     parsed = parse_content(path, PROVENANCE_RE, load_kinds(base))
     assert parsed.lines == FILE
 

@@ -29,7 +29,7 @@ from edcg.content.custom_file import CUSTOM_FILE_NAME
 from edcg.rules import engine
 from edcg.rules.validation import (
     PROVENANCE_RE,
-    RULES_DIR,
+    RULE_DATA_DIR,
     Finding,
     ValidationResult,
     _extract_site_table,
@@ -281,7 +281,7 @@ def test_live_systems_rules_toml_loading(
     tag kinds: a bound naming no kind can never match, so it is reported as an
     inert override.
     """
-    base = load_base_config(RULES_DIR)
+    base = load_base_config(RULE_DATA_DIR)
     base_rules = base["rules"]
     house_declared, house_patches = load_house_rules(live_house_rules, base_rules)
 
@@ -352,7 +352,7 @@ def test_live_custom_file_roundtrip(live_custom_file: Path) -> None:
     carry every line forward unchanged, which is the guarantee the save path
     depends on.
     """
-    base = load_base_config(RULES_DIR)
+    base = load_base_config(RULE_DATA_DIR)
     kinds = load_kinds(base)
 
     raw = live_custom_file.read_bytes()
@@ -412,7 +412,7 @@ def test_live_custom_file_validation(
     on their prose.
     """
     content = live_custom_file.read_text(encoding="utf-8")
-    base = load_base_config(RULES_DIR)
+    base = load_base_config(RULE_DATA_DIR)
     per_system = load_all_system_rules(live_systems_dir, base["rules"])
     assert per_system, f"no system rules found under {live_systems_dir}"
 
@@ -445,7 +445,7 @@ def test_live_custom_file_validation(
         result = validate_content(
             content,
             system_name,
-            base_rules_path=RULES_DIR / "base.toml",
+            base_rules_path=RULE_DATA_DIR / "base.toml",
             house_rules_path=live_house_rules,
             systems_dir=live_systems_dir,
         )
@@ -471,7 +471,7 @@ def test_companion_template_example_files(live_systems_dir: Path) -> None:
     if not template_dir.is_dir():
         pytest.skip(f"companion template not found at {template_dir}")
 
-    base = load_base_config(RULES_DIR)
+    base = load_base_config(RULE_DATA_DIR)
     base_rules = base["rules"]
     house_paths = sorted(template_dir.rglob("all.rules.toml"))
     house_declared, house_patches = (

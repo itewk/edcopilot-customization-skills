@@ -40,14 +40,13 @@ def test_init_scaffolds_a_blank_root_without_git(tmp_path, capsys):
 
     assert (tmp_path / cli.CONFIG_FILENAME).is_file()
     assert (tmp_path / "systems").is_dir()
-    example = tmp_path / "systems" / "all.rules.toml.example"
-    assert example.read_text(encoding="utf-8") == (
+    assert not (tmp_path / "systems" / "all.rules.toml.example").exists()
+    assert (
         Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / "all.rules.toml.example"
-    ).read_text(encoding="utf-8")
+    ).is_file()
     assert set(data["created"]) == {
         cli.CONFIG_FILENAME,
         "systems/",
-        "systems/all.rules.toml.example",
     }
 
 
@@ -92,8 +91,7 @@ def test_init_commits_only_the_scaffold(tmp_path, monkeypatch, capsys):
 
     committed = _git(tmp_path, "show", "--name-only", "--format=", "HEAD").split()
     assert "unrelated.txt" not in committed
-    assert cli.CONFIG_FILENAME in committed
-    assert "systems/all.rules.toml.example" in committed
+    assert committed == [cli.CONFIG_FILENAME]
     status = _git(tmp_path, "status", "--porcelain")
     assert "?? unrelated.txt" in status
 

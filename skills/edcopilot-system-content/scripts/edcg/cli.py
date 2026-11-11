@@ -326,21 +326,13 @@ def command_init(args: argparse.Namespace) -> int:
         systems_dir.mkdir(parents=True)
         created.append("systems/")
 
-    example = systems_dir / "all.rules.toml.example"
-    # Read the example template from assets directory directly
-    assets_dir = Path(__file__).resolve().parents[2] / "assets"
-    example.write_text(
-        (assets_dir / "all.rules.toml.example").read_text(encoding="utf-8"), encoding="utf-8", newline="\n"
-    )
-    created.append("systems/all.rules.toml.example")
-
     git_info: dict[str, Any] = {"initialized": False, "commit": None}
     if not args.no_git:
         repo = GitRepo.init(root)
         try:
             # Stage only what init created. An existing repository may hold
             # unrelated untracked files; they must stay untracked.
-            repo.add(CONFIG_FILENAME, "systems")
+            repo.add(CONFIG_FILENAME)
             commit = repo.commit("edcg: scaffold content repository")
         finally:
             repo.close()
