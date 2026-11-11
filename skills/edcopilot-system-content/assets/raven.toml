@@ -1,0 +1,35 @@
+# The Raven Colonial API: the authority for what a colonisation system plans to
+# build, and for the facility catalogue in build_types.toml beside this file.
+#
+# Raven is authoritative for **the plan**, never for what is true on the ground:
+# the journal outranks it, and what Inara or Spansh says is advisory. Nothing
+# reads this file yet - `sync` and `audit` are the commands that will.
+#
+# {system} below is the system name with spaces as %20.
+
+version = 1
+
+base_url = "https://ravencolonial100-awcbdvabgze4c5cq.canadacentral-01.azurewebsites.net"
+
+[endpoints]
+# rev, architect, bodies[]
+system = "/api/v2/system/{system}"
+# id, name, status, buildType, bodyNum
+sites = "/api/v2/system/{system}/sites"
+
+# How to read the site list:
+#
+#   A site's bodyNum indexes into the record's bodies[]. status is one of
+#   complete, build or plan.
+#
+#   A plan site is committed once it has a real name. One named with two NATO
+#   phonetic-alphabet words (Xray Hotel, Zulu Yankee) is a placeholder and only
+#   tentatively planned. Raven also carries unresolved placeholders - a build
+#   type of "outpost?", "installation?" or nothing at all, with a -1 body number
+#   and a name in square brackets - which look like hand-entered duplicates and
+#   are not part of the plan.
+#
+#   The journal's StationType is not a placement signal: colonisation-built
+#   outposts report SurfaceStation even when they orbit. Place a site by its
+#   build type, or while it is still building by the "Orbital Construction
+#   Site: " / "Planetary Construction Site: " prefix on its name.
