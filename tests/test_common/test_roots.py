@@ -32,7 +32,7 @@ class TestContentRootResolution:
         # Create a directory with systems/
         systems_dir = tmp_path / "systems"
         systems_dir.mkdir()
-        
+
         assert content_root_state(tmp_path) == "existing"
 
     def test_existing_content_root_with_config_file(self, tmp_path):
@@ -40,7 +40,7 @@ class TestContentRootResolution:
         # Create a directory with config file
         config_file = tmp_path / "edcopilot-customization-generator.toml"
         config_file.write_text('[roots]\nedcopilot = "C:/EDCoPilot/User custom files"\n')
-        
+
         assert content_root_state(tmp_path) == "existing"
 
     def test_env_content_root_must_exist(self, tmp_path):
@@ -68,10 +68,10 @@ class TestEddcopilotRootResolution:
         # Create a config file with stale path
         config_file = tmp_path / "edcopilot-customization-generator.toml"
         config_file.write_text('[roots]\nedcopilot = "C:/nonexistent/path"\n')
-        
+
         # Set up env to not override
         os.environ["EDCG_EDCOPILOT_ROOT"] = ""
-        
+
         result = resolve_edcopilot_root(tmp_path, os.environ)
         assert result.path is None
         assert result.source == "config"
@@ -118,13 +118,13 @@ class TestEddcopilotRootResolution:
     def test_write_stored_root_creates_config(self, tmp_path):
         """Test that write_stored_root creates config file if it doesn't exist."""
         config_file = tmp_path / "edcopilot-customization-generator.toml"
-        
+
         # Ensure config file doesn't exist
         if config_file.exists():
             config_file.unlink()
-        
+
         write_stored_root(tmp_path, Path("test/path"))
-        
+
         assert config_file.exists()
         content = config_file.read_text()
         assert "[roots]" in content
@@ -216,5 +216,5 @@ class TestEddcopilotRootResolution:
         # Create a directory with systems/
         systems_dir = tmp_path / "systems"
         systems_dir.mkdir()
-        
+
         assert content_root_state(tmp_path) == "existing"

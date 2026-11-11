@@ -89,7 +89,7 @@ class TestFindJournalDir:
             journal_dir.mkdir(parents=True)
             # Create a dummy journal file
             (journal_dir / "Journal.0001.log").write_text('{"timestamp": "2024-01-15T10:00:00Z", "event": "Docked"}\n')
-            
+
             with patch("edcg.facts.journal.Path.home") as mock_home:
                 mock_home.return_value = tmp_path
                 with patch("platform.system", return_value="Windows"):
@@ -105,7 +105,7 @@ class TestFindJournalDir:
             journal_dir = tmp_path / ".local" / "share" / "Frontier Developments" / "Elite Dangerous"
             journal_dir.mkdir(parents=True)
             (journal_dir / "Journal.0001.log").write_text('{"timestamp": "2024-01-15T10:00:00Z", "event": "Docked"}\n')
-            
+
             with patch("edcg.facts.journal.Path.home") as mock_home:
                 mock_home.return_value = tmp_path
                 with patch("platform.system", return_value="Linux"):
@@ -121,7 +121,7 @@ class TestFindJournalDir:
             journal_dir = tmp_path / "Library" / "Application Support" / "Frontier Developments" / "Elite Dangerous"
             journal_dir.mkdir(parents=True)
             (journal_dir / "Journal.0001.log").write_text('{"timestamp": "2024-01-15T10:00:00Z", "event": "Docked"}\n')
-            
+
             with patch("edcg.facts.journal.Path.home") as mock_home:
                 mock_home.return_value = tmp_path
                 with patch("platform.system", return_value="Darwin"):
@@ -150,7 +150,7 @@ class TestFindJournalDir:
             journal_dir2.mkdir(parents=True)
             (journal_dir1 / "Journal.0001.log").write_text('{"timestamp": "2024-01-15T10:00:00Z", "event": "Docked"}\n')
             (journal_dir2 / "Journal.0001.log").write_text('{"timestamp": "2024-01-15T10:00:00Z", "event": "Docked"}\n')
-            
+
             with patch("edcg.facts.journal.Path.home") as mock_home:
                 mock_home.return_value = tmp_path
                 with patch("platform.system", return_value="Windows"):

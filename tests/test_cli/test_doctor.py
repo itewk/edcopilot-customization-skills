@@ -99,6 +99,50 @@ def test_doctor_fails_when_the_edcopilot_root_is_unconfigured(tmp_path, capsys):
     assert "set EDCG_EDCOPILOT_ROOT" in out
 
 
+def test_doctor_first_run_shape_is_only_the_root_check(tmp_path, capsys):
+    """A fresh blank directory fails only the unconfigured EDCoPilot root."""
+    assert cli.main(["doctor"]) == 1
+    out = capsys.readouterr().out
+
+    status = [line for line in out.splitlines() if line.startswith(("OK", "FAIL"))]
+    failures = [line for line in status if line.startswith("FAIL")]
+    assert len(status) == 6
+    assert failures == [
+        "FAIL EDCoPilot root: not configured (expected on first run)"
+    ]
+    assert "expected on first run" in out
+    assert f"OK   content root: {tmp_path} (blank)" in out
+
+
+def test_doctor_accepts_a_plausible_edcopilot_root_without_a_warning(
+    tmp_path, capsys
+):
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / "EDCoPilot.SpeechExtensions.Custom.txt").write_text(
+        "", encoding="utf-8"
+    )
+    cli.os.environ["EDCG_EDCOPILOT_ROOT"] = str(runtime)
+
+    assert cli.main(["doctor"]) == 0
+    out = capsys.readouterr().out
+    assert "WARN EDCoPilot root" not in out
+
+
+def test_doctor_warns_when_the_edcopilot_root_has_no_edcopilot_files(
+    tmp_path, capsys
+):
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    cli.os.environ["EDCG_EDCOPILOT_ROOT"] = str(runtime)
+
+    assert cli.main(["doctor"]) == 0
+    out = capsys.readouterr().out
+    assert "WARN EDCoPilot root:" in out
+    assert "does not look like EDCoPilot's User custom files folder" in out
+    assert "confirm with the user" in out
+
+
 def test_doctor_reports_an_unusable_content_root(monkeypatch, tmp_path, capsys):
     missing = tmp_path / "missing-content"
     monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(missing))

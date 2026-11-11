@@ -24,20 +24,28 @@ below are advisory, and the agent's discipline carries them.
 1. Run `python <skill-dir>/scripts/edcg.py doctor` before anything else. It
    prints one `OK` or `FAIL` line per check (Python version, `httpx`, GitPython,
    git identity, content root, EDCoPilot root). Relay every `FAIL` together with
-   the `fix:` hint it prints. Do not start the workflow past a failed check.
-2. The content root is the current working directory. Set
+   the `fix:` hint it prints.
+2. **First run is allowed to fail the root check.** On a fresh setup the
+   EDCoPilot root is not configured yet, so `doctor` reports it as
+   `not configured (expected on first run)` — and any logs check that depends on
+   it fails with it. When those are the **only** failures, that is the expected
+   first-run shape, not a reason to stop: continue with steps 3 and 4. Do not
+   bypass any other failed check.
+3. The content root is the current working directory. Set
    `EDCG_CONTENT_DEFINITIONS_ROOT` to use another directory. The dossier, the
    rules file and the git history all live there; nothing else stores workflow
-   state.
-3. If `doctor` reports the content root as `blank`, do not invent a layout.
-   Confirm with the user first: "this directory isn't a content repository yet —
-   set one up here?" On a yes, run `edcg.py init`. It writes the config file, a
+   state. If `doctor` reports the content root as `blank`, do not invent a
+   layout. Confirm with the user first: "this directory isn't a content repository yet
+   — set one up here?" On a yes, run `edcg.py init`. It writes the config file, a
    `systems/` directory, the rules example and, unless `--no-git` is passed, an
    initial commit. Offer `--no-git` when the user does not want a repository.
 4. EDCoPilot's "User custom files" folder is resolved from
-   `EDCG_EDCOPILOT_ROOT`, then from the config file in the content repository,
-   then by asking the user. Store the answer in the config file when it is
-   stable; never guess a path into a game installation.
+   `EDCG_EDCOPILOT_ROOT`, then from `roots.edcopilot` in the config file in the
+   content repository, then by asking the user. Ask now if it is unresolved, and
+   store the answer in the config file when it is stable; never guess a path into
+   a game installation. Re-run `doctor` and require every check to pass
+   **before any content work**. If doctor warns that the EDCoPilot-root folder
+   does not look right, confirm the path with the user before proceeding.
 5. EDCoPilot must be closed whenever a step writes the custom file or changes
    markers. Ask the user to close it, and to restart it when the marker cycle
    calls for a restart.

@@ -78,11 +78,11 @@ def test_finalize_no_active_branch_merged_false(tmp_path):
 
 def test_finalize_merge_false(tmp_path):
     cfg = _mock_config(tmp_path)
-    
+
     # Set up the global state to simulate an active branch
     import edcg.repo.branches as branches_module
     branches_module._active_branch = "feat-x"
-    
+
     with patch("edcg.repo.branches.get_config", return_value=cfg):
         with patch("edcg.repo.branches.GitRepo") as GR:
             GR.is_repo.return_value = False
@@ -92,11 +92,11 @@ def test_finalize_merge_false(tmp_path):
 
 def test_abort_no_confirm(tmp_path):
     cfg = _mock_config(tmp_path)
-    
+
     # Set up the global state to simulate an active branch
     import edcg.repo.branches as branches_module
     branches_module._active_branch = "feat-x"
-    
+
     with patch("edcg.repo.branches.get_config", return_value=cfg):
         with patch("edcg.repo.branches.GitRepo") as GR:
             GR.is_repo.return_value = False
@@ -106,32 +106,32 @@ def test_abort_no_confirm(tmp_path):
 
 def test_abort_confirm_clears_active(tmp_path):
     cfg = _mock_config(tmp_path)
-    
+
     # Set up the global state to simulate an active branch
     import edcg.repo.branches as branches_module
     branches_module._active_branch = "feat-x"
-    
+
     with patch("edcg.repo.branches.get_config", return_value=cfg):
         with patch("edcg.repo.branches.GitRepo") as GR:
             GR.is_repo.return_value = False
             r = abort_branch(confirm=True)
-    
-    # Check that global state was cleared 
+
+    # Check that global state was cleared
     assert branches_module._active_branch is None
     assert r.confirmed is True
 
 
 def test_abort_tolerant_mocked_repo(tmp_path):
     cfg = _mock_config(tmp_path)
-    
+
     # Set up the global state to simulate an active branch
     import edcg.repo.branches as branches_module
     branches_module._active_branch = "feat-x"
-    
+
     repo = MagicMock()
     repo.list_branches.return_value = ["main", "feat-x"]
     repo._repo = None
-    
+
     with patch("edcg.repo.branches.get_config", return_value=cfg):
         with patch("edcg.repo.branches.GitRepo") as GR:
             GR.is_repo.return_value = True
@@ -214,6 +214,85 @@ def test_finalize_push_success_is_reported(tmp_path):
     assert calls == ["origin", "origin"]
     assert result.pushed is True
     assert result.push_status == "pushed"
+
+
+# ---------------------------------------------------------------------------
+# Foreign checkouts are not workflow branches
+# ---------------------------------------------------------------------------
+
+
+def _checkout_foreign_branch(cfg) -> None:
+    for root in (cfg.content_definitions_root, cfg.edcopilot_root):
+        _git(root, "checkout", "-b", "release")
+
+
+def test_foreign_branch_is_not_an_active_workflow_branch(tmp_path):
+    cfg = _mock_config(tmp_path)
+    _init_repo_with_commit(cfg.content_definitions_root, "README.md")
+    _init_repo_with_commit(
+        cfg.edcopilot_root, "EDCoPilot.SpeechExtensions.Custom.txt", ""
+    )
+    _checkout_foreign_branch(cfg)
+
+    with patch("edcg.repo.branches.get_config", return_value=cfg):
+        status = branch_status()
+
+    assert status.active_branch is None
+    assert status.content_current_branch == "release"
+    assert status.runtime_current_branch == "release"
+    assert status.foreign_checkout is True
+
+
+def test_finalize_refuses_a_foreign_branch_without_touching_it(tmp_path):
+    cfg = _mock_config(tmp_path)
+    _init_repo_with_commit(cfg.content_definitions_root, "README.md")
+    _init_repo_with_commit(
+        cfg.edcopilot_root, "EDCoPilot.SpeechExtensions.Custom.txt", ""
+    )
+    _checkout_foreign_branch(cfg)
+
+    with patch("edcg.repo.branches.get_config", return_value=cfg):
+        result = finalize_branch(merge=True, push=False)
+
+    assert result.merged is False
+    assert result.merge_commits == [None, None]
+    for root in (cfg.content_definitions_root, cfg.edcopilot_root):
+        assert _git(root, "branch", "--show-current").strip() == "release"
+        assert "release" in _git(root, "branch", "--format=%(refname:short)")
+
+
+def test_abort_refuses_to_delete_a_foreign_branch(tmp_path):
+    cfg = _mock_config(tmp_path)
+    _init_repo_with_commit(cfg.content_definitions_root, "README.md")
+    _init_repo_with_commit(
+        cfg.edcopilot_root, "EDCoPilot.SpeechExtensions.Custom.txt", ""
+    )
+    _checkout_foreign_branch(cfg)
+
+    with patch("edcg.repo.branches.get_config", return_value=cfg):
+        result = abort_branch(confirm=True)
+
+    assert result.discarded_branch is None
+    assert result.content_discarded is False
+    assert result.runtime_discarded is False
+    assert "nothing to discard" in result.message
+    for root in (cfg.content_definitions_root, cfg.edcopilot_root):
+        assert "release" in _git(root, "branch", "--format=%(refname:short)")
+        assert _git(root, "branch", "--show-current").strip() == "release"
+
+
+def test_generated_branch_names_are_managed_branches():
+    from edcg.repo.branches import is_managed_branch
+    from edcg.repo.gitrepo import slugify_branch_name
+
+    assert is_managed_branch(slugify_branch_name("add station lore"))
+    assert is_managed_branch(slugify_branch_name("add station lore") + "-20260101T120000Z")
+    assert is_managed_branch(slugify_branch_name())
+    assert is_managed_branch("gen/42")
+    assert not is_managed_branch("release")
+    assert not is_managed_branch("main")
+    assert not is_managed_branch("gen/")
+    assert not is_managed_branch(None)
 
 
 def test_finalize_without_push_does_not_push(tmp_path):

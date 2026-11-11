@@ -38,7 +38,7 @@ npx skills update
 When running the skill for the first time:
 1. `edcg.py doctor` verifies the environment (Python ≥3.12, required packages, git identity)
 2. The content repository root is the agent's current working directory
-3. If it's blank, the user confirms and `edcg.py init` scaffolds it (`git init` unless `--no-git`, 
+3. If it's blank, the user confirms and `edcg.py init` scaffolds it (`git init` unless `--no-git`,
    the config file, `systems/`, the house-rules example)
 4. The EDCoPilot root is asked once and stored in the content repository configuration
 5. Subsequent runs will use the stored path, re-asking only if the path becomes stale
@@ -46,10 +46,10 @@ When running the skill for the first time:
 ## Quickstart Guides
 
 ### New System Flow
-Install the skill, then ask your agent to "design a new colonisation system for <system name>". 
+Install the skill, then ask your agent to "design a new colonisation system for <system name>".
 Refer to `references/new-system-interview.md` for the six-phase design interview process.
 
-### Update Flow  
+### Update Flow
 Install the skill, then ask your agent to "update my systems after play".
 Refer to `references/update-interview.md` for the seven-phase update interview process.
 

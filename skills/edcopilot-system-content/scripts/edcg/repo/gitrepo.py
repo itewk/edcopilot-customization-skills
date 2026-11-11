@@ -241,6 +241,22 @@ class GitRepo:
         except GitCommandError:
             pass
 
+    def add(self, *paths: str) -> None:
+        """Stage only the named paths (relative to the repository root).
+
+        Unlike :meth:`add_all` this leaves unrelated untracked files alone, so
+        scaffolding in an existing repository cannot sweep them into a commit.
+        No-op with warning for non-repos.
+        """
+        repo = self._require_repo("add")
+        if repo is None:
+            return
+
+        try:
+            repo.git.add(*[str(path) for path in paths])
+        except GitCommandError:
+            pass
+
     def commit(self, message: str) -> Optional[str]:
         """Commit all staged changes with the given message.
 

@@ -238,18 +238,18 @@ class TestGitRepoAuthorConfig:
         repo = GitRepo.init(repo_path)
         repo._run_git("config", "user.name", "Configured User")
         repo._run_git("config", "user.email", "configured@example.com")
-        
+
         test_file = repo.path / "author_test.txt"
         test_file.write_text("content")
         repo.add_all()
         commit_hash = repo.commit("Author test")
-        
+
         # Verify author in commit
         author_name = repo._run_git("log", "-1", "--format=%an", commit_hash).strip()
         author_email = repo._run_git("log", "-1", "--format=%ae", commit_hash).strip()
         assert author_name == "Configured User"
         assert author_email == "configured@example.com"
-        
+
         repo.close()
         import shutil
         shutil.rmtree(tmpdir, ignore_errors=True)
@@ -265,40 +265,40 @@ class TestGitRepoIntegration:
         repo = GitRepo.init(repo_path)
         repo._run_git("config", "user.name", "Integration Test")
         repo._run_git("config", "user.email", "integration@test.com")
-        
+
         try:
             # Initial commit
             file1 = repo.path / "file1.txt"
             file1.write_text("initial")
             repo.add_all()
             repo.commit("Initial commit")
-            
+
             # Modify tracked file (unstaged)
             file1.write_text("modified")
-            
+
             # Add new file (untracked)
             file2 = repo.path / "file2.txt"
             file2.write_text("new file")
-            
+
             # Stage new file
             repo._run_git("add", "file2.txt")
-            
+
             status = repo.status()
             assert "file1.txt" in status["unstaged"]
             assert "file2.txt" in status["staged"]
             assert status["clean"] is False
-            
+
             # Diff should show unstaged changes
             diff_output = repo.diff()
             assert "modified" in diff_output
-            
+
             # Commit staged
             repo.commit("Add file2")
-            
+
             # Now stage and commit the modification
             repo.add_all()
             repo.commit("Modify file1")
-            
+
             log = repo.log(3)
             assert len(log) == 3
             assert "Modify file1" in log[0]

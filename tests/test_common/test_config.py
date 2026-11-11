@@ -219,7 +219,7 @@ class TestCWDResolution:
         edcopilot.mkdir()
         monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(edcopilot))
         monkeypatch.delenv("EDCG_CONTENT_DEFINITIONS_ROOT", raising=False)
-        
+
         config = load_config(os.environ)
         assert config.content_definitions_root == tmp_path
 
@@ -232,7 +232,7 @@ class TestCWDResolution:
         edcopilot.mkdir()
         monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(content))
         monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(edcopilot))
-        
+
         config = load_config(os.environ)
         assert config.content_definitions_root == content
 
@@ -243,7 +243,7 @@ class TestCWDResolution:
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(edcopilot))
         monkeypatch.delenv("EDCG_CONTENT_DEFINITIONS_ROOT", raising=False)
-        
+
         config = load_config(os.environ)
         assert config.content_definitions_root == tmp_path
         assert config.edcopilot_root == edcopilot
@@ -256,7 +256,7 @@ class TestCWDResolution:
         edcopilot.mkdir()
         monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", "")
         monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(edcopilot))
-        
+
         config = load_config(os.environ)
         assert config.content_definitions_root == tmp_path
 

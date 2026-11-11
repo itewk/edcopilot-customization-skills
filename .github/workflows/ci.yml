@@ -11,28 +11,28 @@ jobs:
     permissions:
       contents: read
     runs-on: windows-latest
-    
+
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-    
+
     - name: Setup Python 3.12
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
-    
+
     - name: Install dependencies
       run: |
         pip install -r requirements-dev.txt httpx GitPython
-    
+
     - name: Run hermetic tests
       run: |
         python -m pytest tests/ -q -m "not integration"
-    
+
     - name: Install skills-ref
       run: |
         pip install git+https://github.com/agentskills/agentskills#subdirectory=skills-ref
-    
+
     - name: Validate skills with skills-ref
       shell: pwsh
       run: |
@@ -42,7 +42,7 @@ jobs:
           skills-ref validate $_.FullName
           if ($LASTEXITCODE -ne 0) { exit 1 }
         }
-    
+
     - name: Smoke checks
       run: |
         python skills/edcopilot-system-content/scripts/edcg.py version

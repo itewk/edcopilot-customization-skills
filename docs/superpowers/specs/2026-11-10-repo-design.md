@@ -80,7 +80,7 @@ omission.
 2. **Never invent facts.** If a source is unavailable, record it and let the
    human decide whether the remaining evidence is enough.
 3. **Format parity.** Tag syntax, provenance comment format, commit subjects
-   (`edcg: scaffold|update <system> - <summary>`, `edcg: content <system>`,
+   (`edcg: scaffold|update <system> — <summary>`, `edcg: content <system>`,
    `edcg: markdb add|remove <n> tag(s)`) and `Co-authored-by` trailers are
    part of the contract; changing them silently is a bug.
 4. **Two-roots separation.** Tooling and dossiers stay out of the runtime
