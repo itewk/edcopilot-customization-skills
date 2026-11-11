@@ -3,7 +3,7 @@
 The old package served its instructions from Python prompt builders. The skill
 serves the same instructions from markdown, so these tests assert the structure
 the agent needs at discovery time: valid frontmatter, a body short enough to
-load whole, the eight spine sections, working reference links, and a command
+load whole, the nine spine sections, working reference links, and a command
 list that cannot drift from the CLI's registered subcommands.
 """
 
@@ -29,9 +29,10 @@ EXPECTED_REFERENCES = [
     "workflow-details.md",
 ]
 
-# The eight spine sections, in order.
+# The nine spine sections, in order.
 EXPECTED_SECTIONS = [
     "Setup",
+    "Process",
     "Commands",
     "Resume rule",
     "New system",
@@ -174,7 +175,7 @@ class TestBodyShape:
         _, body = _body()
         assert len(body) < 500, f"SKILL.md body is {len(body)} lines"
 
-    def test_body_has_the_eight_spine_sections_in_order(self):
+    def test_body_has_the_nine_spine_sections_in_order(self):
         _, body = _body()
         headings = [
             line[3:].strip()
@@ -186,7 +187,9 @@ class TestBodyShape:
     def test_body_lists_the_five_reference_files(self):
         text = SKILL_MD.read_text(encoding="utf-8")
         linked = REFERENCE_LINK_RE.findall(text)
-        assert sorted(Path(path).name for path in linked) == sorted(EXPECTED_REFERENCES)
+        # A reference may be linked more than once (the Process section repeats
+        # the two interview links), so compare the set of names, not the count.
+        assert {Path(path).name for path in linked} == set(EXPECTED_REFERENCES)
 
     def test_every_linked_reference_exists(self):
         text = SKILL_MD.read_text(encoding="utf-8")
@@ -294,3 +297,40 @@ class TestProductIdentity:
         lowered = path.read_text(encoding="utf-8").lower()
         for banned in BANNED_STRINGS:
             assert banned not in lowered, f"{path.name} mentions {banned!r}"
+
+
+def test_skill_md_has_numbered_process():
+    """The Process section is the ordered spine of the whole workflow."""
+    _, body = _body()
+    text = "\n".join(body)
+    lowered = text.lower()
+
+    assert "## Process" in text, "SKILL.md has no ## Process section"
+    assert lowered.index("## setup") < text.index("## Process"), (
+        "## Process must follow ## Setup"
+    )
+    assert text.index("## Process") < text.index("## Commands"), (
+        "## Process must precede ## Commands"
+    )
+
+    for label in (
+        "Resume",
+        "Gather facts",
+        "Interview",
+        "Validate the definition",
+        "Save the definition",
+        "Preview gate",
+        "Writing brief",
+        "Write the block",
+        "Validate the content",
+        "Write the content",
+        "Review gate",
+        "Mark for update",
+        "Restart",
+        "Check the logs",
+        "Clear the markers",
+    ):
+        assert f"**{label}.**" in text, f"Process is missing the step {label!r}"
+
+    for number in range(1, 16):
+        assert f"\n{number}. **" in text, f"Process is missing step number {number}"
