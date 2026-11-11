@@ -18,7 +18,7 @@ _build_types: dict[str, Any] | None = None
 _raven_config: dict[str, Any] | None = None
 
 
-def _load_toml_asset(filename: str) -> dict[str, Any]:
+def _load_toml_data(filename: str) -> dict[str, Any]:
     """Load a TOML file from the rule data directory."""
     with (RULE_DATA_DIR / filename).open("rb") as f:
         return tomllib.load(f)
@@ -28,7 +28,7 @@ def get_base_rules() -> dict[str, Any]:
     """Get base rules (base.toml) - cached after first load."""
     global _base_rules
     if _base_rules is None:
-        _base_rules = _load_toml_asset("base.toml")
+        _base_rules = _load_toml_data("base.toml")
     return _base_rules
 
 
@@ -36,7 +36,7 @@ def get_build_types() -> dict[str, Any]:
     """Get build types catalogue (build_types.toml) - cached after first load."""
     global _build_types
     if _build_types is None:
-        _build_types = _load_toml_asset("build_types.toml")
+        _build_types = _load_toml_data("build_types.toml")
     return _build_types
 
 
@@ -44,7 +44,7 @@ def get_raven_config() -> dict[str, Any]:
     """Get Raven Colonial API config (raven.toml) - cached after first load."""
     global _raven_config
     if _raven_config is None:
-        _raven_config = _load_toml_asset("raven.toml")
+        _raven_config = _load_toml_data("raven.toml")
     return _raven_config
 
 
