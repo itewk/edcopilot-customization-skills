@@ -81,7 +81,7 @@ title is not a paragraph.
 A station may carry its own bound:
 
 ```toml
-[content.bounds.stations."Takenouchi Settlement (ii-42)"]
+[content.bounds.stations."Primary Station (AB-1)"]
 StationChatter = [12, 24]
 ```
 

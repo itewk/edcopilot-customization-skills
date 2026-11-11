@@ -16,15 +16,17 @@ that makes EDCoPilot pick the new lines up. It is for **authoring** a new system
 and for **updating** an existing one after play.
 
 The prose lives here and in `references/`; the scripts supply facts, computed
-values, validation and file writes. The scripts never refuse a step: the gates
-below are advisory, and the agent's discipline carries them.
+values, validation and file writes. The scripts never pause for a gate; they do
+refuse impossible or invalid operations (a bad definition, a rewrite that would
+introduce errors, an existing repository on `init`). The gates below are
+advisory, and the agent's discipline carries them.
 
 ## Setup
 
 1. Run `python <skill-dir>/scripts/edcg.py doctor` before anything else. It
    prints one `OK` or `FAIL` line per check (Python version, `httpx`, GitPython,
-   git identity, content root, EDCoPilot root). Relay every `FAIL` together with
-   the `fix:` hint it prints.
+   the `git` binary, git identity, content root, EDCoPilot root). Relay every
+   `FAIL` together with the `fix:` hint it prints.
 2. **First run is allowed to fail the root check.** On a fresh setup the
    EDCoPilot root is not configured yet, so `doctor` reports it as
    `not configured (expected on first run)` — and any logs check that depends on
@@ -34,7 +36,10 @@ below are advisory, and the agent's discipline carries them.
 3. The content root is the current working directory. Set
    `EDCG_CONTENT_DEFINITIONS_ROOT` to use another directory. The dossier, the
    rules file and the git history all live there; nothing else stores workflow
-   state. If `doctor` reports the content root as `blank`, do not invent a
+   state. Every environment variable the scripts read is listed in the
+   Environment variables section of
+   [`references/workflow-details.md`](references/workflow-details.md). If
+   `doctor` reports the content root as `blank`, do not invent a
    layout. Confirm with the user first: "this directory isn't a content repository yet
    — set one up here?" On a yes, run `edcg.py init`. It writes the config file, a
    `systems/` directory, the rules example and, unless `--no-git` is passed, an
@@ -55,7 +60,10 @@ below are advisory, and the agent's discipline carries them.
 Run these in order. Every step applies to both modes; where the new-system and update paths differ, the step says so.
 
 1. **Resume.** Run `edcg.py audit --system <name>` (or `edcg.py update-scan` when facts may have moved). Read the repository state: `systems/`, the custom file, `UPDATEDB` markers, git log.
-2. **Gather facts.** New: `edcg.py gather-facts --system <name>` (or without a name when Raven has no entry). Update: `edcg.py update-scan` and read this system's delta entry.
+2. **Gather facts.** New: `edcg.py gather-facts --system <name>`. When Raven
+   has no entry, skip gathering and start the interview from the user's
+   description. Update: `edcg.py update-scan` and read this system's delta
+   entry.
 3. **Interview.** New: the six phases in [`references/new-system-interview.md`](references/new-system-interview.md). Update: the seven phases in [`references/update-interview.md`](references/update-interview.md). One phase at a time; wait for answers.
 4. **Validate the definition.** `edcg.py validate-definition` (JSON stdin: dossier, rules, and the house rules when present). Fix every `error` and repeat until `passed` is true. Warnings are understood, not ignored.
 5. **Save the definition.** `edcg.py save-definition` (JSON stdin, including `commit_co_author`). Verify the returned commit hash with `git log -1 --oneline`.
@@ -65,10 +73,11 @@ Run these in order. Every step applies to both modes; where the new-system and u
 9. **Validate the content.** `edcg.py validate-content` (JSON stdin). Fix every `error` and repeat until `passed` is true; present the returned rule table.
 10. **Write the content.** Close EDCoPilot first. `edcg.py write-content` (JSON stdin, including `commit_co_author`) appends the block with provenance and commits, including any rewrites staged in step 8.
 11. **Review gate.** Ask the user whether to mark for update now or to review first (static: read the file or diff; live: restart EDCoPilot and listen). Record the choice in the conversation and follow it.
-12. **Mark for update.** `edcg.py markdb add --tag <tag> ...` (or JSON `tags`). One commit.
+12. **Mark for update.** `edcg.py markdb add --tag <tag> ...` (or JSON `tags`). One commit. Compare `modified_tags` to the tags you passed — a missing tag matched no authored content; stop and reconcile the station/tag name before proceeding.
 13. **Restart.** Ask the user to restart EDCoPilot and confirm when done.
 14. **Check the logs.** `edcg.py check-logs --system <name>`. Show the per-tag report. A failed tag is the user's decision: fix and repeat the cycle, or accept.
-15. **Clear the markers.** `edcg.py markdb remove --tag <tag> ...`. One commit. The cycle is complete: exactly three runtime commits (content, marker add, marker remove).
+15. **In-game test and upload.** Ask the user to test the content in game and upload the database from inside EDCoPilot. Only after they confirm, clear the markers.
+16. **Clear the markers.** `edcg.py markdb remove --tag <tag> ...`. One commit. Compare `modified_tags` to the tags you passed — a missing tag matched no authored content; stop and reconcile the station/tag name before proceeding. The cycle is complete: exactly three runtime commits (content, marker add, marker remove).
 
 ## Commands
 
@@ -115,12 +124,12 @@ process, so a new session resumes from the repository alone.
 ## New system
 
 Start with `edcg.py gather-facts --system <name>`. When Raven has no entry yet,
-start without a name and let the interview create the identity from the user's
-description. Then run the six-phase interview one phase at a time, waiting for
-answers: high-level concept, station and character design, plot threads,
-artifacts (dossier and rules TOML), the validation loop, and save. Ask once,
-before the artifacts, how many examples each section should keep, then write
-`[content.bounds]` from the answer. Full text:
+skip gathering and start the interview from the user's description; the
+interview creates the identity. Then run the six-phase interview one phase at a
+time, waiting for answers: high-level concept, station and character design,
+plot threads, artifacts (dossier and rules TOML), the validation loop, and
+save. Ask once, before the artifacts, how many examples each section should
+keep, then write `[content.bounds]` from the answer. Full text:
 [`references/new-system-interview.md`](references/new-system-interview.md).
 
 ## Update an existing system
@@ -128,9 +137,9 @@ before the artifacts, how many examples each section should keep, then write
 Refresh the facts, then invalidate what is no longer true, then offer variety,
 then make room for new lines, and only then update the artifacts, validate and
 save. The seven-phase order is fixed; phase 2B (reconcile existing content) runs
-between the lore update and the station update. Use `edcg.py get-content` to
-read the exact lines before editing, and `edcg.py rewrite-tag` for every
-removal, replacement or addition. Full text:
+between the lore update and the station update. Use
+`edcg.py get-content --system <name>` to read the exact lines before editing, and
+`edcg.py rewrite-tag` for every removal, replacement or addition. Full text:
 [`references/update-interview.md`](references/update-interview.md).
 
 `edcg.py update-scan` is the refresh command, for one system or many: it
@@ -140,7 +149,7 @@ them.
 
 ## Advisory gates
 
-Nothing refuses. Ask, and treat the answer as the instruction:
+None of these gates refuses; ask, and treat the answer as the instruction:
 
 - **Preview** — after the definition is saved, offer a small representative
   sample (about 8-10 lines) before the full generation. If the user declines,
@@ -157,11 +166,15 @@ Nothing refuses. Ask, and treat the answer as the instruction:
 - **Log check** — show the per-tag report. A failed tag is the user's call: fix
   the content and repeat the marker cycle, or accept the failure and continue.
   Do not remove markers behind their back and do not hide a failure.
+- **In-game test and upload** — after the log check, ask the user to test the
+  content in game and upload the database from inside EDCoPilot. Only after they
+  confirm, clear the markers.
 
 Derive the state before each gate rather than assuming it: `edcg.py branch
-status` for the active branch, `edcg.py get-content` for authored tags and their
-counts, the custom file for `UPDATEDB` markers, and `systems/` for the dossier
-and rules files. Read them together so the user can see where the cycle is.
+status` for the active branch, `edcg.py get-content --system <name>` for authored
+tags and their counts, the custom file for `UPDATEDB` markers, and
+`systems/` for the dossier and rules files. Read them together so the user can
+see where the cycle is.
 Details: [`references/workflow-details.md`](references/workflow-details.md).
 
 ## Commit conventions

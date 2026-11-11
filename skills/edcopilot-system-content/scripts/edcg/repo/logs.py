@@ -16,8 +16,12 @@ NO_CHANGE_RE = re.compile(
 )
 LOG_NAME_RE = re.compile(r"EDCoPilotGUI\.log\.(\d{8})\.(\d{6})\.txt$")
 
-NO_SINCE_SUMMARY = "Add the markers before checking the restart."
-NO_LOG_SUMMARY = "Restart EDCoPilot, then retry."
+NO_SINCE_SUMMARY = (
+    "No custom file found — add the markers first, then restart EDCoPilot."
+)
+NO_LOG_SUMMARY = (
+    "No log found after the marker add — restart EDCoPilot and retry."
+)
 CLEAN_SUMMARY = "No UPDATEDB failures in the log written after the restart."
 NO_CHANGE_SUMMARY = (
     "EDCoPilot did not process a change: the custom file was unchanged "
