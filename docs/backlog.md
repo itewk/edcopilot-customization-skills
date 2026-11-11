@@ -27,15 +27,15 @@ Items marked **(gate)** must pass before tagging `v1.0.0`.
 
 ## Next small changes (approved, no spec/plan needed)
 
-- **Help as the interface doc (human decision).** Drop the 22-row command
-  table from SKILL.md (the Process steps name every command inline); upgrade
-  `cli.py` so every flag has help text and key subcommands carry examples and
-  documented exit codes in `--help` (the agentskills using-scripts guide:
-  "`--help` output is the primary way an agent learns your script's
-  interface"). Rewire the command-drift tests to parse commands from the
-  Process steps instead of the table. Backlog additions from the same guide:
-  dry-run flags for stateful commands, an output-size policy for data
-  commands.
+- ~~Help as the interface doc~~ — **done** (commit `refactor: make --help the
+  interface documentation`): command table removed, Process carries commands
+  inline, `--help` upgraded (flag help, worked examples with parse-locked
+  tests, exit codes documented), flag-ownership guard extended to references.
+- **Candidates from the using-scripts guide (awaiting go-ahead):** `--dry-run`
+  flags for the stateful commands (`write-content`, `save-definition`, `init`)
+  so an agent can preview state changes; an output-size policy for data
+  commands (`get-content` on a large system is unbounded; `gather-facts` caps
+  at 20 bodies) — default to a summary with a flag to request more.
 
 ## Product correctness
 
@@ -113,6 +113,17 @@ Items marked **(gate)** must pass before tagging `v1.0.0`.
 19. Test-docstring overclaims (e.g. "every zero-iteration table keeps its
     header" while checking headings only; placeholder inventory missing two
     scalars).
+20. Help-surface blind spots (from the help-task review): the argument-help
+    walker cannot see per-subcommand `help=` (a future `add_parser` without
+    help passes silently); the guarded-flag count bound is `>= 7` against an
+    inventory of 12 (wide margin); epilog examples spell `python edcg.py …`
+    while SKILL.md documents `python <skill-dir>/scripts/edcg.py …` from the
+    content root (not copy-paste runnable); the root epilog's command-group
+    block omits `version`; `validate-definition`/`validate-content` (read-only,
+    JSON stdin) carry no worked example.
+21. Help example encoding: epilog examples are ASCII (`<harness> (<models>)`)
+    because a literal 🤖 crashes redirected cp1252 stdout — deliberate; revisit
+    if the console-encoding story changes.
 
 ## Documentation debt
 
