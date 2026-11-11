@@ -79,8 +79,17 @@ def _env_value(env: Mapping[str, str], key: str) -> Optional[str]:
 
 
 def _str_to_bool(value: str) -> bool:
-    """Convert a string to a boolean, case-insensitively."""
-    return value.strip().lower() in ("true", "1", "yes", "on")
+    """Convert a string to a boolean, case-insensitively.
+
+    An unrecognised value is a configuration error, never a silent ``False``:
+    a typo in a boolean setting must be reported rather than misread.
+    """
+    text = value.strip().lower()
+    if text in ("true", "1", "yes", "on"):
+        return True
+    if text in ("false", "0", "no", "off"):
+        return False
+    raise ConfigError(f"Invalid boolean value: {value!r}")
 
 
 def _current_dir() -> Path:
