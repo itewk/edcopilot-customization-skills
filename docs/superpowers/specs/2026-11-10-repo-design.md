@@ -41,9 +41,9 @@ loaded progressively.
 - **Content definitions root:** the agent's current working directory;
   `EDCG_CONTENT_DEFINITIONS_ROOT` overrides when set. A blank directory is a
   valid starting point: `edcg.py init` scaffolds it (`git init` unless
-  `--no-git`, the config file, `systems/`, the house-rules example) after the
-  user confirms. A directory containing `systems/` or the config file is never
-  re-scaffolded.
+  `--no-git`, the config file, `systems/`) after the user confirms; the agent
+  then copies and reviews the house rules. A directory containing `systems/` or
+  the config file is never re-scaffolded.
 - **EDCoPilot root, in precedence order:** `EDCG_EDCOPILOT_ROOT` if set and
   existing; then the path persisted in the content repo's
   `edcopilot-customization-generator.toml` (`[roots] edcopilot`), committed

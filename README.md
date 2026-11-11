@@ -39,9 +39,12 @@ When running the skill for the first time:
 1. `edcg.py doctor` verifies the environment (Python ≥3.12, required packages, git identity)
 2. The content repository root is the agent's current working directory
 3. If it's blank, the user confirms and `edcg.py init` scaffolds it (`git init` unless `--no-git`,
-   the config file, `systems/`, the house-rules example)
-4. The EDCoPilot root is asked once and stored in the content repository configuration
-5. Subsequent runs will use the stored path, re-asking only if the path becomes stale
+   the config file, `systems/`)
+4. The agent adopts the house rules: it copies `assets/all.rules.toml.example` to
+   `systems/all.rules.toml` (promoting a legacy `systems/all.rules.toml.example` when one
+   exists) and reviews each section with the user before any content work
+5. The EDCoPilot root is asked once and stored in the content repository configuration
+6. Subsequent runs will use the stored path, re-asking only if the path becomes stale
 
 ## Quickstart Guides
 

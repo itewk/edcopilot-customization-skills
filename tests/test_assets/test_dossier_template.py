@@ -8,9 +8,10 @@ asserted loop expansion, the port asserts that no loop artifacts remain and
 that the zero-iteration table/section structure is present instead.
 
 The old Jinja template ``rules.toml.j2`` was dropped by the new design, so its
-tests are deleted. ``all.rules.toml.example`` still ships: ``init`` copies it
-into every new content repository, and ``tests/test_skill/test_assets.py``
-guards its neutrality, so there is nothing to assert here.
+tests are deleted. ``all.rules.toml.example`` still ships, but ``init`` no
+longer copies it: the agent copies it into the content repository during setup,
+and ``tests/test_skill/test_assets.py`` guards its neutrality, so there is
+nothing to assert here.
 """
 
 import pytest

@@ -450,11 +450,67 @@ class TestBodyShape:
 
     def test_setup_documents_the_content_root_and_blank_directory_flow(self):
         _, body = _body()
-        text = "\n".join(body)
+        text = " ".join(" ".join(body).split())
+        lowered = text.lower()
         assert "EDCG_CONTENT_DEFINITIONS_ROOT" in text
-        assert "working directory" in text.lower()
-        assert "isn't a content repository yet" in text.lower()
+        assert "working directory" in lowered
+        assert "isn't a content repository yet" in lowered
         assert "--no-git" in text
+        # init is a skeleton command: it writes the config file and systems/,
+        # and copies no rules example into the content repository.
+        assert "it writes the config file" in lowered
+        assert "`systems/` directory" in text
+        assert "the rules example" not in lowered
+
+    def test_skill_md_setup_adopts_house_rules(self):
+        """The house-rules copy is agent-mediated and reviewed before content."""
+        _, body = _body()
+        setup = "\n".join(body)
+        setup = setup[setup.index("## Setup") : setup.index("## Process")]
+        text = " ".join(setup.split())
+        lowered = text.lower()
+
+        assert "**Adopt the house rules.**" in text
+        # The step is Setup step 3: it follows init and precedes the root work.
+        assert text.index("**Adopt the house rules.**") < text.index(
+            "**Establish the EDCoPilot root.**"
+        )
+
+        # The step only acts when the house file is absent.
+        assert "if `systems/all.rules.toml` does not exist" in lowered
+
+        # A legacy in-repo example is promoted (it may hold user edits) and the
+        # redundant copy is deleted.
+        assert "promote it" in lowered
+        assert "copy it to `systems/all.rules.toml`" in text
+        assert "delete the redundant example" in lowered
+
+        # Otherwise the agent-facing asset is the source, linked so it is read.
+        assert (
+            "copy [`assets/all.rules.toml.example`](assets/all.rules.toml.example)"
+            in text
+        )
+        assert "→ `systems/all.rules.toml`" in text
+
+        # The review is the point: every section the example contains is walked
+        # with the user.
+        assert "review the rules with the user" in lowered
+        for section in ("logo", "banned filters", "conversation floors"):
+            assert section in lowered, f"house-rules review omits {section!r}"
+        # The starter asset has no bounds table; Setup must not claim one.
+        assert "bounds" not in lowered
+        assert "modify, add, or remove" in lowered
+        assert "before any content work" in lowered
+
+        # An existing repository is reminded that changes are deliberate.
+        assert "for an existing repository" in lowered
+        assert "deliberate edits with their reasons" in lowered
+
+        # The reviewed file is not a stray: save-definition stages everything,
+        # so it lands in the first definition commit (not the content commit).
+        assert "rides into the first definition commit" in lowered
+        assert "`edcg: scaffold` or `edcg: update`" in text
+        assert "first content commit" not in lowered
 
     def test_setup_names_the_edcopilot_root_override(self):
         _, body = _body()
@@ -646,7 +702,8 @@ def test_skill_md_setup_is_focused():
     process_start = content.index("## Process")
     setup = content[setup_start:process_start]
     for label in ("**Check the environment.**", "**Establish the content root.**",
-                  "**Establish the EDCoPilot root.**", "**Re-run `doctor`.**"):
+                  "**Adopt the house rules.**", "**Establish the EDCoPilot root.**",
+                  "**Re-run `doctor`.**"):
         assert label in setup, label
     assert "must be closed whenever" not in setup
     assert "must be closed whenever" in content[process_start:]

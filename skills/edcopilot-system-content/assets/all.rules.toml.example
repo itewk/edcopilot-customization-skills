@@ -1,6 +1,6 @@
 # Your own house rules, for every system you write content for.
 #
-# The tool's base rule set (rules/base.toml in the installed package) holds what
+# The tool's base rule set (`scripts/edcg/rules/data/base.toml` in this skill) holds what
 # EDCoPilot requires of any author, whoever they are. This file holds what you
 # require of your own content. A rule that is a matter of taste belongs here and
 # nowhere else, so that the tool can be handed to somebody else without carrying

@@ -1,7 +1,8 @@
 """Guards for the assets the skill ships to every new user.
 
-``init`` copies ``all.rules.toml.example`` into the content repository, and the
-dossier template is what the agent starts from, so both must be neutral. An
+``init`` creates only the skeleton (the config file and ``systems/``); the agent
+copies ``all.rules.toml.example`` into the content repository during setup, and
+the dossier template is what the agent starts from, so both must be neutral. An
 author's own name, domain or first-person voice baked into either file becomes
 every user's default.
 """
