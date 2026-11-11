@@ -1,0 +1,75 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+.Python
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+  #  > https://github.com/pyinstaller/pyinstaller/discussions/10892
+  #  > https://github.com/pyinstaller/pyinstaller/issues/3741
+  #  > https://github.com/pyinstaller/pyinstaller/pull/6007
+  #  > https://github.com/pyinstaller/pyinstaller/pull/6007
+  #  > https://github.com/pyinstaller/pyinstaller/issues/2937
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.mypy_cache
+.pytest_cache
+.pycache
+
+# Visual Studio Code
+.vscode/
+.settings/
+*.vscode-settings.json
+
+# PyCharm
+.idea/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Temporary files
+*.tmp
+*.temp
+
+# Python venv
+.venv/
+venv/
+ENV/
+env/
