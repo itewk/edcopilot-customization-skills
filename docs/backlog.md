@@ -129,8 +129,7 @@ Items marked **(gate)** must pass before tagging `v1.0.0`.
     `mypy` (already installed by `requirements-dev.txt` but never run); strip
     trailing whitespace in `ci.yml`.
 28. Distribution hygiene for non-git installs: untracked `__pycache__`
-    directories embed absolute paths and would travel in a zip copy; an empty
-    root `assets/` directory remains after the Task 9 asset move. Decide
+    directories embed absolute paths and would travel in a zip copy. Decide
     whether zip/directory distribution is supported and add a packaging step or
     a clean script if so.
 
