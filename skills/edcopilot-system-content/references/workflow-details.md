@@ -63,6 +63,19 @@ marker and the commit. If a tag disappears from the file, stop and find out why
 before adding it back. Each marker is preserved by a rewrite, so editing lines
 never silently drops the update.
 
+### markdb failure modes
+
+- **Missing custom file** — `edcg.py markdb add` and `edcg.py markdb remove`
+  exit 1 with `custom file not found: <expected path> (EDCoPilot root: <root>)`.
+  Nothing was marked. Write and validate the content first (`write-content`),
+  then repeat the marker cycle.
+- **Unresolved EDCoPilot root** — the command exits 1 with the resolver's
+  message. Set `EDCG_EDCOPILOT_ROOT` or store `roots.edcopilot` in the content
+  repository's config file.
+- **Tag matched no authored content** — the command still exits 0 but prints a
+  warning naming the tags: compare `modified_tags` to the tags you passed, and
+  reconcile the station or tag name before proceeding.
+
 A tag rewritten by `edcg.py rewrite-tag` stays uncommitted until the next
 `edcg.py write-content`, which owns the content commit. That is deliberate: one
 predictable content commit covers an append and any staged rewrites.
