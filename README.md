@@ -1,23 +1,20 @@
 # EDCoPilot Customization Skills
 
-A collection of Agent Skills for authoring and updating EDCoPilot speech content.
+A collection of Agent Skills (agentskills.io) for authoring and updating EDCoPilot speech content for Elite Dangerous colonisation systems — the agent interviews you, records the design as a dossier and rules, writes and validates the speech content, and walks the marker cycle that makes EDCoPilot pick it up. Link to the founding spec at docs/superpowers/specs/2026-11-10-repo-design.md.
 
-## Requirements
+## Available skills
 
-- Windows with EDCoPilot installed and run at least once
-- Python 3.12 or later
-- `pip install httpx gitpython`
-- Git with `user.name`/`user.email` configured
-- A skills-compatible chat client
+### edcopilot-system-content
 
-## What This Repository Contains
+Author and update EDCoPilot speech content for colonisation systems: greetings, chatter, broadcasts, station facts. 
 
-This repository contains the `edcopilot-system-content` skill, which enables users to:
-- Create new system content for EDCoPilot using a structured interview process
-- Update existing system content with new information
-- Manage custom speech content through provenance tracking and marker operations
+**Use when:**
+- Create speech content for my new colonisation system <name>
+- Update the station dialogue after the station finished construction  
+- The broadcast mix for my system feels wrong — review and rewrite it
+- Add a new station that just became landable
 
-## Installation and Setup
+## Installation
 
 Install the skill using:
 
@@ -27,74 +24,40 @@ npx skills add <your-github-owner>/edcopilot-customization-skills
 
 > Note: The `<your-github-owner>` should be replaced with your actual GitHub username or organization name.
 
-Update the skill with:
+The CLI will ask which harness to enable (Claude Code, Cursor, Codex, OpenCode, Gemini CLI and others) and supports global vs project scope. For harnesses without skills-CLI support: copy `skills/edcopilot-system-content/` into the harness's skills directory.
 
-```bash
-npx skills update
-```
+## Requirements
 
-## First Run Experience
+- Windows with EDCoPilot installed and run at least once
+- Python 3.12 or later
+- `pip install httpx gitpython`
+- Git with `user.name`/`user.email` configured
+- A skills-compatible chat client
 
-When running the skill for the first time:
-1. `edcg.py doctor` verifies the environment (Python ≥3.12, required packages, git identity)
-2. The content repository root is the agent's current working directory
-3. If it's blank, the user confirms and `edcg.py init` scaffolds it (`git init` unless `--no-git`,
-   the config file, `systems/`)
-4. The agent adopts the house rules: it copies `assets/all.rules.toml.example` to
-   `systems/all.rules.toml` (promoting a legacy `systems/all.rules.toml.example` when one
-   exists) and reviews each section with the user before any content work
-5. The EDCoPilot root is asked once and stored in the content repository configuration
-6. Subsequent runs will use the stored path, re-asking only if the path becomes stale
+## Usage
 
-## Quickstart Guides
+Skills activate on relevant tasks. The skill walks two main flows:
 
-### New System Flow
-Install the skill, then ask your agent to "design a new colonisation system for <system name>".
-Refer to `references/new-system-interview.md` for the six-phase design interview process.
+1. **New System Flow**: The six-phase interview process to create new colonisation systems
+2. **Update Flow**: The seven-phase flow to update existing systems after play
 
-### Update Flow
-Install the skill, then ask your agent to "update my systems after play".
-Refer to `references/update-interview.md` for the seven-phase update interview process.
+Each workflow includes human gates: preview, review choice, restart, and listening. The agent asks for your decision at each gate.
 
-## Repository Layout
+Refer to `skills/edcopilot-system-content/SKILL.md` as the full agent-facing documentation.
+
+## Skill structure
 
 ```
 .
-├── docs/
-│   └── superpowers/
-│       └── specs/
-│           └── 2026-11-10-repo-design.md    # Founding specification
 ├── skills/
 │   └── edcopilot-system-content/            # Main skill folder
 │       ├── SKILL.md                         # Skill main documentation
 │       ├── references/                      # Detailed reference materials
 │       ├── assets/                          # Supporting files
 │       └── scripts/                         # Python implementation
-├── tests/
-├── requirements-dev.txt                     # Development dependencies
-├── pytest.ini                               # Test configuration
-├── .github/workflows/ci.yml                 # Continuous integration workflow
-├── docs/live-run-checklist.md               # Live run checklist
 └── CONTRIBUTING.md                          # Development guidelines
 ```
 
-## Adding a Second Skill
+## License
 
-To add another skill to this repository, create a new folder under `skills/` with the same structure:
-- `SKILL.md` - Main documentation (lowercase a-z0-9-, no consecutive hyphens, must match the folder name)
-- `references/` - Detailed materials
-- `assets/` - Supporting files
-- `scripts/` - Implementation code
-
-Each skill is completely self-contained. The repository's CI automatically validates every folder under `skills/` without needing changes to CI configuration.
-
-## Human Gates
-
-All workflows include human gates:
-- Preview before full generation
-- Review choice before marking
-- Restart confirmation before log check and marker removal
-- Listening after restart
-
-The skill never refuses to proceed; all human gates are advisory.
->>>>>>> f795e1f (docs: standalone readme, contributing guide and founding spec)
+GPL-3.0
