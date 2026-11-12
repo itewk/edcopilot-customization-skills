@@ -56,7 +56,7 @@ Dead surface in the same file: `deepl_api_key` (`:61`, `:195`) and `log_level` (
 
 **Done when:** `Select-String content_root` finds only `content_root_state` and `resolve_content_root`; suite green.
 
-- [ ] Accept
+- [x] Accept
 - [ ] Reject
 
 ---
@@ -84,7 +84,7 @@ Then delete `_custom_file_path`, `_resolve_custom_file`, both inline copies in `
 
 **Done when:** `grep -c '"/ "systems"'` returns one non-test site; `get-content` and `rewrite-tag` behaviour on a missing root is unchanged (existing tests in `test_rewrite_content.py`, `test_content_rewrite.py`).
 
-- [ ] Accept
+- [x] Accept
 - [ ] Reject
 
 ---
@@ -101,7 +101,7 @@ On top of that, 19 dataclass fields are aliases of other fields in the same obje
 
 **Done when:** suite green; `branch status` payload contains exactly one key per concept; `tests/test_repo_layer/test_branches.py:20-28`, `:59-67`, `:88-99`, `:102-113`, `:116-130`, `:133-149` are deleted with the mirror they test (see 16).
 
-- [ ] Accept
+- [x] Accept
 - [ ] Reject
 
 ---
@@ -121,7 +121,7 @@ On top of that, 19 dataclass fields are aliases of other fields in the same obje
 
 **Done when:** `test_raven.py`, `test_spansh.py`, `test_inara.py` pass unchanged; no client module contains `asyncio.sleep`, `httpx.AsyncClient` or `raise_for_status`.
 
-- [ ] Accept
+- [x] Accept
 - [ ] Reject
 
 ---
@@ -136,7 +136,7 @@ On top of that, 19 dataclass fields are aliases of other fields in the same obje
 
 **Done when:** `Select-String "from edcg.rules.validation import"` shows no leading-underscore name; suite green; live-fixture tests (`tests/test_integration/test_live_fixtures.py`) unchanged.
 
-- [ ] Accept
+- [x] Accept
 - [ ] Reject
 
 ---
@@ -156,7 +156,7 @@ On top of that, 19 dataclass fields are aliases of other fields in the same obje
 
 **Done when:** `engine.__all__ == ["get_build_types", "is_landable_build_type", "get_facility_class", "get_facility_name", "get_placement"]` (or the loaders made private); `grep -r "RuleEngine\|search_systems\|rule_table" skills/` returns nothing; remaining tests green.
 
-- [ ] Accept
+- [x] Accept
 - [ ] Reject
 
 ---
@@ -171,7 +171,7 @@ On top of that, 19 dataclass fields are aliases of other fields in the same obje
 
 **Done when:** suite green, including `tests/test_repo_layer/test_branches.py` and `test_gitrepo.py`; `grep -c "repo.close()"` in `branches.py` is zero.
 
-- [ ] Accept
+- [x] Accept
 - [ ] Reject
 
 ---
@@ -186,7 +186,7 @@ On top of that, 19 dataclass fields are aliases of other fields in the same obje
 
 **Done when:** `grep "_repo" repo/branches.py` returns nothing; `branch review` output is byte-identical for the same working tree (capture before/after on a temp repo).
 
-- [ ] Accept
+- [x] Accept
 - [ ] Reject
 
 ---
@@ -201,7 +201,7 @@ On top of that, 19 dataclass fields are aliases of other fields in the same obje
 
 **Done when:** `test_cli/test_dispatch.py` key-set assertions are unchanged and green (notably `:208`); one `WriteResult` exists; `grep getattr cli.py` returns nothing.
 
-- [ ] Accept
+- [x] Accept
 - [ ] Reject
 
 ---
@@ -218,7 +218,7 @@ The vocabulary has the same shape: `_extract_voices_from_section_8` hardcodes ~3
 
 **Done when:** `grep -c '"hub", "installation"'` in `skills/` returns one; `test_rules_loading.py`'s remaining landability assertions still pass; suite green.
 
-- [ ] Accept
+- [x] Accept
 - [ ] Reject
 
 ---
@@ -235,7 +235,7 @@ Three renderings enumerate the same eleven diff fields by hand and must be edite
 
 **Done when:** `test_facts.py` and `test_audit.py` green with the renderer tests removed; the diff JSON from `update-scan` is unchanged (`test_dispatch.py:364`).
 
-- [ ] Accept
+- [x] Accept
 - [ ] Reject
 
 ---
@@ -250,7 +250,7 @@ Three renderings enumerate the same eleven diff fields by hand and must be edite
 
 **Done when:** `tests/test_content_layer/test_markdb.py` passes unchanged; `grep system_name markdb.py` returns nothing.
 
-- [ ] Accept
+- [x] Accept
 - [ ] Reject
 
 ---
@@ -265,7 +265,7 @@ Three renderings enumerate the same eleven diff fields by hand and must be edite
 
 **Done when:** `test_help.py` and `test_dispatch.py` green; exit code 2 preserved for every usage error (`test_dispatch.py:9-13` and friends).
 
-- [ ] Accept
+- [x] Accept
 - [ ] Reject
 
 ---
@@ -280,7 +280,7 @@ Three renderings enumerate the same eleven diff fields by hand and must be edite
 
 **Done when:** the function is under 25 lines; live-fixture tests unchanged and green.
 
-- [ ] Accept
+- [x] Accept
 - [ ] Reject
 
 ---
@@ -301,7 +301,7 @@ Three renderings enumerate the same eleven diff fields by hand and must be edite
 
 **Done when:** suite green, same pass count; `grep -c "def _git" tests/` returns one.
 
-- [ ] Accept
+- [x] Accept
 - [ ] Reject
 
 ---
@@ -322,7 +322,7 @@ Three renderings enumerate the same eleven diff fields by hand and must be edite
 
 **Done when:** suite green with a reduced count; `git status` is clean after a full run; no test writes outside `tmp_path`.
 
-- [ ] Accept
+- [x] Accept
 - [ ] Reject
 
 ---

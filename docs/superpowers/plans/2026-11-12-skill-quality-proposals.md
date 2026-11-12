@@ -25,7 +25,7 @@ Ranked by expected effect on successful agent execution.
 
 **Why it matters for an agent:** The dossier is a durable authored artifact and the template is presented as the source of truth. An agent can produce a dossier containing broken links, legacy implementation details, or accidental fragments even while following the interview correctly.
 
-- [ ] Accept
+- [x] Accept
 - [ ] Reject
 
 ### 2. Make the feature-branch offer discoverable in both workflow modes
@@ -36,7 +36,7 @@ Ranked by expected effect on successful agent execution.
 
 **Why it matters for an agent:** The workflow supports an optional isolation path, but asymmetric instructions make update work more likely to miss it. A single early default prevents late branch creation and ensures the user, not the agent, chooses whether to branch.
 
-- [ ] Accept
+- [x] Accept
 - [ ] Reject
 
 ### 3. De-duplicate the spine and add a compact reference-loading map
@@ -47,7 +47,7 @@ Ranked by expected effect on successful agent execution.
 
 **Why it matters for an agent:** The skill is already within size limits, but context efficiency and instruction precedence matter for a long, multi-stage workflow. A clear spine lets the agent identify the next step and load only the details needed for that mode without reconciling repeated versions.
 
-- [ ] Accept
+- [x] Accept
 - [ ] Reject
 
 ### 4. Validate description triggering with realistic positive and near-miss prompts
@@ -58,7 +58,7 @@ Ranked by expected effect on successful agent execution.
 
 **Why it matters for an agent:** A sound workflow has no benefit if the skill is not selected, while an overbroad description adds irrelevant procedure to unrelated requests. Measurement distinguishes a real trigger gap from a stylistic preference and reduces overfitting to a few obvious phrases.
 
-- [ ] Accept
+- [x] Accept
 - [ ] Reject
 
 ## Standards Conformance — Already Met; No Action Proposed
