@@ -19,6 +19,18 @@ environment variables are set (see Test Constraints below).
 python -m pytest -q -m "not integration"
 ```
 
+### Test Constraints
+
+- No network access; no real EDCoPilot folders may be read or written.
+- Use `tmp_path` fixture for temporary directories.
+- Use the fixtures provided in `tests/fixtures/`.
+- Integration tests require the test-only `INARA_API_KEY` environment variable
+  (not `EDCG_INARA_API_KEY`); they skip when it is not set.
+- Unit tests must stay offline and must not read or write the developer's real
+  content roots.
+python -m pytest -q -m "not integration"
+```
+
 CI runs the hermetic subset and validates all skills:
 
 ```powershell
@@ -65,15 +77,5 @@ To add a new skill to this repository:
   ```
 
 The trailers must be adjacent in the commit message.
-
-### Test Constraints
-
-- No network access; no real EDCoPilot folders may be read or written.
-- Use `tmp_path` fixture for temporary directories.
-- Use the fixtures provided in `tests/fixtures/`.
-- Integration tests require the test-only `INARA_API_KEY` environment variable
-  (not `EDCG_INARA_API_KEY`); they skip when it is not set.
-- Unit tests must stay offline and must not read or write the developer's real
-  content roots.
 - Live fixtures require `EDCP_TEST_LIVE_ROOT` (live content repo, read-only),
   `EDCP_TEST_EDCOPILOT_ROOT` (runtime custom file), and companion template sibling path.
