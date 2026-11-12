@@ -175,6 +175,11 @@ requested). It exits 1 for `failed`, `partial` and `nothing_to_push`, and 0 for
 `pushed` and `not_pushed`: a refused or unattempted push is never a success, and
 a push that succeeded is success even when no merge happened.
 
+`--no-merge` cannot be combined with `--push`. A push carries the default branch
+that the merge produces, so before a merge there is nothing to push; the pair is
+rejected as a usage error (exit 2) naming both flags rather than dropping the
+request silently.
+
 Offer a branch before the work starts, never after artifacts exist. Never create
 a branch the user did not ask for.
 

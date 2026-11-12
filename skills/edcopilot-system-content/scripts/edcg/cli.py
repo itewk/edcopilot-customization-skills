@@ -739,6 +739,28 @@ def command_version(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 
+class _FinalizeFlag(argparse.Action):
+    """Store a ``branch finalize`` flag, rejecting ``--no-merge`` with ``--push``.
+
+    The pair has no meaning: a push carries the default branch, which the merge
+    produces, so there is nothing to push before a merge. Accepting the pair
+    would silently drop the request, so it fails as a usage error instead.
+    """
+
+    def __init__(self, option_strings, dest, const, **kwargs):
+        super().__init__(option_strings, dest, nargs=0, const=const, **kwargs)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, self.const)
+        merge = getattr(namespace, "merge", parser.get_default("merge"))
+        push = getattr(namespace, "push", parser.get_default("push"))
+        if push and not merge:
+            parser.error(
+                "--no-merge cannot be combined with --push: without a merge "
+                "there is nothing to push"
+            )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="edcg",
@@ -916,16 +938,20 @@ If --since is not provided, it defaults to the mtime of the custom file.
   python edcg.py branch finalize --merge --push
 
 --merge is the default; --no-merge leaves the work on the feature branch.
+--no-merge cannot be combined with --push: nothing exists to push before a merge.
 """,
     )
     finalize_parser.add_argument(
-        "--merge", dest="merge", action="store_true", help="Merge (default)"
+        "--merge", dest="merge", action=_FinalizeFlag, const=True,
+        help="Merge (default)",
     )
     finalize_parser.add_argument(
-        "--no-merge", dest="merge", action="store_false", help="Do not merge"
+        "--no-merge", dest="merge", action=_FinalizeFlag, const=False,
+        help="Do not merge",
     )
     finalize_parser.add_argument(
-        "--push", action="store_true", help="Push the default branch"
+        "--push", action=_FinalizeFlag, const=True,
+        help="Push the default branch",
     )
     finalize_parser.set_defaults(merge=True, push=False)
     abort_parser = branch_subparsers.add_parser(
