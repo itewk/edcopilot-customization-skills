@@ -22,12 +22,13 @@ from pathlib import Path
 from typing import Any, Optional
 
 from edcg import __version__
+from edcg.common import layout
 from edcg.common.config import (
     CONFIG_FILENAME,
     ConfigError,
     ContentRootError,
     content_root_state,
-    load_config,
+    get_config,
     resolve_content_root,
     resolve_edcopilot_root,
 )
@@ -70,6 +71,8 @@ def _json_default(value: Any) -> Any:
         return str(value)
     if isinstance(value, set):
         return sorted(value)
+    if isinstance(value, datetime):
+        return value.isoformat()
     if is_dataclass(value):
         return asdict(value)
     return str(value)
@@ -104,20 +107,11 @@ def _required(data: dict, key: str) -> Any:
     return data[key]
 
 
-def _validation_dict(result) -> dict:
-    return {
-        "passed": result.passed,
-        "findings": [
-            {
-                "rule": finding.rule,
-                "severity": finding.severity,
-                "line": finding.line,
-                "message": finding.message,
-            }
-            for finding in result.findings
-        ],
-        "rule_summary": result.rule_summary,
-    }
+def _validation_payload(result) -> dict:
+    """``asdict`` the result, minus the Markdown table the CLI does not emit."""
+    payload = asdict(result)
+    payload.pop("rule_table", None)
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -333,7 +327,7 @@ def command_init(args: argparse.Namespace) -> int:
         config_file.write_text(CONFIG_TEMPLATE, encoding="utf-8", newline="\n")
         created.append(CONFIG_FILENAME)
 
-    systems_dir = root / "systems"
+    systems_dir = layout.systems_dir(root)
     if not systems_dir.is_dir():
         systems_dir.mkdir(parents=True)
         created.append("systems/")
@@ -372,7 +366,13 @@ def command_init(args: argparse.Namespace) -> int:
 
 
 def _facts_dict(facts) -> dict:
-    """The old gather-facts payload, with datetimes rendered as ISO 8601."""
+    """The old gather-facts payload, with datetimes rendered as ISO 8601.
+
+    This is a *projection*, not a generic renderer: it deliberately omits
+    ``raven_sites``/``journal_data``/``inara_stations``/``spansh_stations`` and
+    caps ``station_bodies`` at ``_MAX_STATION_BODIES``, which ``asdict`` cannot
+    express.
+    """
     return {
         "system_name": facts.system_name,
         "raven_system": {
@@ -451,31 +451,29 @@ def _facts_dict(facts) -> dict:
 
 
 def command_gather_facts(args: argparse.Namespace) -> int:
-    if not args.system:
-        raise UsageError("--system is required")
-    config = load_config(os.environ)
+    config = get_config()
     facts = asyncio.run(gather_facts(args.system, config))
     _emit(_facts_dict(facts))
     return 0
 
 
 def command_writing_brief_data(args: argparse.Namespace) -> int:
-    config = load_config(os.environ)
+    config = get_config()
     _emit(writing_brief_data(config, args.system))
     return 0
 
 
 def command_update_scan(args: argparse.Namespace) -> int:
-    config = load_config(os.environ)
+    config = get_config()
     _emit(asyncio.run(build_update_scan(config, gather_facts)))
     return 0
 
 
 def command_audit(args: argparse.Namespace) -> int:
-    config = load_config(os.environ)
+    config = get_config()
     facts = asyncio.run(gather_facts(args.system, config))
     report = build_audit_report(facts, config)
-    _emit(report.to_dict())
+    _emit(asdict(report))
     return 0 if report.passed else 1
 
 
@@ -495,7 +493,7 @@ def command_validate_definition(args: argparse.Namespace) -> int:
         system_name=_required(data, "system_name"),
         all_rules=data.get("all_rules"),
     )
-    _emit(_validation_dict(result))
+    _emit(_validation_payload(result))
     return 0 if result.passed else 1
 
 
@@ -522,7 +520,7 @@ def command_validate_content(args: argparse.Namespace) -> int:
         content=_required(data, "content"),
         system_name=_required(data, "system_name"),
     )
-    _emit(_validation_dict(result))
+    _emit(_validation_payload(result))
     return 0 if result.passed else 1
 
 
@@ -534,14 +532,7 @@ def command_write_content(args: argparse.Namespace) -> int:
         model=data.get("model"),
         commit_co_author=data.get("commit_co_author"),
     )
-    _emit(
-        {
-            "file_path": str(result.file_path),
-            "commit_hash": result.commit_hash,
-            "paused": getattr(result, "paused", False),
-            "ask_user": getattr(result, "ask_user", None),
-        }
-    )
+    _emit(asdict(result))
     return 0
 
 
@@ -597,8 +588,8 @@ def command_markdb(args: argparse.Namespace) -> int:
     co_author = data.get("commit_co_author")
 
     if not custom_file_exists():
-        config = load_config(os.environ)
-        resolved = resolve_edcopilot_root(config.content_root, os.environ)
+        config = get_config()
+        resolved = resolve_edcopilot_root(config.content_definitions_root, os.environ)
         return _fail(
             f"custom file not found: {resolved.path / CUSTOM_FILE_NAME} "
             f"(EDCoPilot root: {resolved.path})"
@@ -638,7 +629,7 @@ def _custom_file_mtime(root: Path) -> Optional[datetime]:
 
 
 def command_check_logs(args: argparse.Namespace) -> int:
-    config = load_config(os.environ)
+    config = get_config()
     resolved = resolve_edcopilot_root(config.content_definitions_root, os.environ)
     if resolved.path is None:
         _emit(
@@ -650,7 +641,7 @@ def command_check_logs(args: argparse.Namespace) -> int:
                 "skipped_update": False,
                 "ok": False,
                 "summary": (
-                    f"Could not resolve EDCoPilot's root"
+                    "Could not resolve EDCoPilot's root"
                     + (f": configured path no longer exists: {resolved.stale}"
                        if resolved.stale is not None else "")
                 ),
@@ -752,8 +743,8 @@ class _FinalizeFlag(argparse.Action):
 
     def __call__(self, parser, namespace, values, option_string=None):
         setattr(namespace, self.dest, self.const)
-        merge = getattr(namespace, "merge", parser.get_default("merge"))
-        push = getattr(namespace, "push", parser.get_default("push"))
+        merge = namespace.merge
+        push = namespace.push
         if push and not merge:
             parser.error(
                 "--no-merge cannot be combined with --push: without a merge "
@@ -781,7 +772,10 @@ review: audit/branch
         help="Available commands; each one's --help documents its flags and examples",
     )
 
-    subparsers.add_parser("doctor", help="Check Python, packages, git and roots")
+    doctor_parser = subparsers.add_parser(
+        "doctor", help="Check Python, packages, git and roots"
+    )
+    doctor_parser.set_defaults(func=command_doctor)
 
     init_parser = subparsers.add_parser(
         "init", help="Scaffold a blank content repository"
@@ -789,16 +783,19 @@ review: audit/branch
     init_parser.add_argument(
         "--no-git", action="store_true", help="Do not run git init"
     )
+    init_parser.set_defaults(func=command_init)
 
     gather_parser = subparsers.add_parser(
         "gather-facts", help="Gather a system's facts as JSON"
     )
-    gather_parser.add_argument("--system", help="System name")
+    gather_parser.add_argument("--system", required=True, help="System name")
+    gather_parser.set_defaults(func=command_gather_facts)
 
-    subparsers.add_parser("validate-definition",
+    definition_parser = subparsers.add_parser("validate-definition",
         help="Validate a dossier and rules pair (JSON on stdin)",
     )
-    subparsers.add_parser(
+    definition_parser.set_defaults(func=command_validate_definition)
+    save_parser = subparsers.add_parser(
         "save-definition",
         help="Save a dossier and rules pair (JSON on stdin)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -813,16 +810,19 @@ Where definition.json is:
   "commit_co_author": "<harness> (<models>) <email>"
 }""",
     )
+    save_parser.set_defaults(func=command_save_definition)
 
     brief_parser = subparsers.add_parser(
         "writing-brief-data", help="Computed writing-brief data as JSON"
     )
     brief_parser.add_argument("--system", required=True, help="System name")
+    brief_parser.set_defaults(func=command_writing_brief_data)
 
-    subparsers.add_parser(
+    content_validate_parser = subparsers.add_parser(
         "validate-content", help="Validate a content block (JSON on stdin)"
     )
-    subparsers.add_parser(
+    content_validate_parser.set_defaults(func=command_validate_content)
+    write_parser = subparsers.add_parser(
         "write-content", help="Append a content block (JSON on stdin)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Example:
@@ -835,16 +835,19 @@ Where content.json is:
   "commit_co_author": "<harness> (<models>) <email>"
 }""",
     )
+    write_parser.set_defaults(func=command_write_content)
 
     content_parser = subparsers.add_parser(
         "get-content", help="Authored content for a system as JSON"
     )
     content_parser.add_argument("--system", required=True, help="System name")
+    content_parser.set_defaults(func=command_get_content)
 
-    subparsers.add_parser(
+    scan_parser = subparsers.add_parser(
         "update-scan", help="Scan every system for fact changes as JSON"
     )
-    subparsers.add_parser(
+    scan_parser.set_defaults(func=command_update_scan)
+    rewrite_parser = subparsers.add_parser(
         "rewrite-tag", help="Rewrite one tag's dialog (JSON on stdin)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Example:
@@ -859,6 +862,7 @@ Where payload.json is:
   }
 }""",
     )
+    rewrite_parser.set_defaults(func=command_rewrite_tag)
 
     markdb_parser = subparsers.add_parser(
         "markdb", help="Add or remove UPDATEDB markers"
@@ -866,6 +870,7 @@ Where payload.json is:
     markdb_subparsers = markdb_parser.add_subparsers(
         dest="markdb_command", metavar="add|remove", help="Marker action"
     )
+    markdb_subparsers.required = True
     markdb_examples = {
         "add": """Example:
   python edcg.py markdb add --tag "@SystemGreeting<~>Test System" --tag "@SystemBroadcast<~>Test System"
@@ -897,6 +902,7 @@ Or pass the tags as JSON on stdin:
             default=[],
             help="Exact tag line (repeatable; otherwise JSON on stdin)",
         )
+        action_parser.set_defaults(func=command_markdb)
 
     logs_parser = subparsers.add_parser(
         "check-logs", help="Check EDCoPilot's log after a restart",
@@ -911,11 +917,13 @@ If --since is not provided, it defaults to the mtime of the custom file.
         "--since", help="ISO 8601 timestamp (default: custom-file mtime)"
     )
     logs_parser.add_argument("--system", help="Scope failures to this system")
+    logs_parser.set_defaults(func=command_check_logs)
 
     audit_parser = subparsers.add_parser(
         "audit", help="Audit a system across the four sources"
     )
     audit_parser.add_argument("--system", required=True, help="System name")
+    audit_parser.set_defaults(func=command_audit)
 
     branch_parser = subparsers.add_parser(
         "branch", help="Two-repository branch orchestration"
@@ -925,12 +933,16 @@ If --since is not provided, it defaults to the mtime of the custom file.
         metavar="start|status|review|finalize|abort",
         help="Branch action",
     )
+    branch_subparsers.required = True
     start_parser = branch_subparsers.add_parser(
         "start", help="Start a feature branch in both repositories"
     )
     start_parser.add_argument("description", nargs="?", help="Branch description")
-    branch_subparsers.add_parser("status", help="Show branch status")
-    branch_subparsers.add_parser("review", help="Review branch changes")
+    start_parser.set_defaults(func=command_branch_start)
+    status_parser = branch_subparsers.add_parser("status", help="Show branch status")
+    status_parser.set_defaults(func=command_branch_status)
+    review_parser = branch_subparsers.add_parser("review", help="Review branch changes")
+    review_parser.set_defaults(func=command_branch_review)
     finalize_parser = branch_subparsers.add_parser(
         "finalize", help="Merge the feature branch into the default branch",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -953,7 +965,7 @@ If --since is not provided, it defaults to the mtime of the custom file.
         "--push", action=_FinalizeFlag, const=True,
         help="Push the default branch",
     )
-    finalize_parser.set_defaults(merge=True, push=False)
+    finalize_parser.set_defaults(merge=True, push=False, func=command_branch_finalize)
     abort_parser = branch_subparsers.add_parser(
         "abort", help="Discard the feature branch",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -966,38 +978,12 @@ Without --confirm it only reports what would be discarded.
     abort_parser.add_argument(
         "--confirm", action="store_true", help="Actually delete the branch"
     )
+    abort_parser.set_defaults(func=command_branch_abort)
 
-    subparsers.add_parser("version", help="Print the version string")
+    version_parser = subparsers.add_parser("version", help="Print the version string")
+    version_parser.set_defaults(func=command_version)
 
     return parser
-
-
-_HANDLERS = {
-    "doctor": command_doctor,
-    "init": command_init,
-    "gather-facts": command_gather_facts,
-    "validate-definition": command_validate_definition,
-    "save-definition": command_save_definition,
-    "writing-brief-data": command_writing_brief_data,
-    "validate-content": command_validate_content,
-    "write-content": command_write_content,
-    "get-content": command_get_content,
-    "update-scan": command_update_scan,
-    "rewrite-tag": command_rewrite_tag,
-    "markdb": command_markdb,
-    "check-logs": command_check_logs,
-    "audit": command_audit,
-    "branch": None,
-    "version": command_version,
-}
-
-_BRANCH_HANDLERS = {
-    "start": command_branch_start,
-    "status": command_branch_status,
-    "review": command_branch_review,
-    "finalize": command_branch_finalize,
-    "abort": command_branch_abort,
-}
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -1008,25 +994,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         parser.print_help()
         return 0
 
-    if args.command == "branch":
-        handler = _BRANCH_HANDLERS.get(args.branch_command)
-        if handler is None:
-            print("usage: edcg branch {start,status,review,finalize,abort}",
-                  file=sys.stderr)
-            return 2
-    elif args.command == "markdb":
-        if getattr(args, "markdb_command", None) not in ("add", "remove"):
-            print("usage: edcg markdb {add,remove}", file=sys.stderr)
-            return 2
-        handler = _HANDLERS["markdb"]
-    else:
-        handler = _HANDLERS.get(args.command)
-        if handler is None:
-            print(f"unknown command: {args.command}", file=sys.stderr)
-            return 2
-
     try:
-        return handler(args)
+        return args.func(args)
     except UsageError as exc:
         _emit({"error": str(exc)})
         return 2

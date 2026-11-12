@@ -10,8 +10,11 @@ No network, no real journal and no real EDCoPilot folder are touched.
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from datetime import UTC, datetime
 from types import SimpleNamespace
+
+from edcg.cli import _json_default
 
 from edcg.repo.audit import (
     AuditDiscrepancy,
@@ -593,7 +596,7 @@ def test_audit_report_returns_json_serializable_report() -> None:
     config = empty_config(inara_api_key="key", spansh_enabled=True)
 
     report = build_audit_report(facts, config)
-    data = report.to_dict()
+    data = json.loads(json.dumps(asdict(report), default=_json_default))
 
     assert json.loads(json.dumps(data)) == data
     assert {
@@ -654,7 +657,7 @@ def test_audit_cli_injects_gather_facts_and_prints_the_report(
         assert received_config is config
         return facts
 
-    monkeypatch.setattr(cli, "load_config", lambda env: config)
+    monkeypatch.setattr(cli, "get_config", lambda: config)
     monkeypatch.setattr(cli, "gather_facts", fake_gather)
 
     assert cli.main(["audit", "--system", "Alpha"]) == 0

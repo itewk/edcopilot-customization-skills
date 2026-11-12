@@ -5,12 +5,14 @@ Implements all rules from base.toml + all.rules.toml + system.rules.toml.
 
 from __future__ import annotations
 
-import os
 import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
+
+from edcg.common.config import get_config
+from edcg.common.layout import PROVENANCE_RE, systems_dir as layout_systems_dir
 
 # Rule data ships beside the validation module as package data.
 RULE_DATA_DIR = Path(__file__).resolve().parent / "data"
@@ -31,7 +33,6 @@ FILTER_CHUNK_RE = re.compile(r"(?:^|(?<=\]))\s*((?:\([A-Za-z_]+\))+)")
 URL_RE = re.compile(r"(?i)\b(?:https?://|ftp://|www\.)\S+")
 COMMANDER_WORD = re.compile(r"\bCommanders?\b")
 TOKEN_SPAN = re.compile(r"<[^>]*>")
-PROVENANCE_RE = re.compile(r"^<!--\s*provenance:(?P<body>.*?)-->\s*$")
 SECTION_RE = re.compile(r"^##\s+(\d+)\.\s*(.*?)\s*$")
 CELL_TOKEN_RE = re.compile(r"^\s*\**\s*`([^`]+)`")
 BUILD_TYPE_CELL_RE = re.compile(r"^\s*\**\s*`([a-z][a-z0-9_]*)`")
@@ -147,16 +148,6 @@ class SaveResult:
     """Result of saving a system definition."""
     commit_hash: str | None
     files_changed: list[str]
-
-
-@dataclass
-class WriteResult:
-    """Result of writing content to EDCoPilot custom file."""
-    file_path: Path
-    commit_hash: str | None
-    paused: bool = False
-    ask_user: str | None = None
-    workflow_table: str | None = None
 
 
 @dataclass
@@ -1330,11 +1321,9 @@ def validate_content(
     # root defaults to the working directory, so an unconfigured run simply
     # finds no systems/ directory and validates against the base rules. A
     # configuration that cannot be loaded is a bug and must not be hidden, so
-    # load_config's exception propagates.
+    # get_config's exception propagates.
     if systems_dir is None:
-        from edcg.common.config import load_config
-
-        systems_dir = load_config(os.environ).content_definitions_root / "systems"
+        systems_dir = layout_systems_dir(get_config())
     if house_rules_path is None:
         house_rules_path = systems_dir / "all.rules.toml"
     
@@ -1632,69 +1621,61 @@ def _normalize_station_name(name: str) -> str:
     return name
 
 
+_DESCRIPTIVE_PREFIXES = (
+    "Built", "Tentative", "and ", "so ", "the ", "a ", "an ",
+)
+
+
+def _is_descriptive(line: str) -> bool:
+    """True when a coverage line is prose rather than a station name."""
+    stripped = line.strip()
+    return (
+        stripped.startswith(_DESCRIPTIVE_PREFIXES)
+        or "deliberately excluded" in stripped
+        or "sites with no pads" in stripped
+    )
+
+
+def _parse_station_list(text: str) -> set[str]:
+    """Split one coverage line on its separators and keep station-like names."""
+    stations: set[str] = set()
+    for part in re.split(r"[·•,\n]", text):
+        part = part.strip().strip("`").strip("*").strip()
+        if part and len(part) > 2 and not part.lower().startswith(
+            ("the ", "a ", "an ")
+        ):
+            stations.add(_normalize_station_name(part))
+    return stations
+
+
+def _starts_simple_station_list(stripped: str) -> bool:
+    """True when a line without the header looks like the simple list format."""
+    return (
+        ("·" in stripped or "•" in stripped)
+        and not stripped.startswith(("Built", "Tentative"))
+        and "deliberately" not in stripped
+    )
+
+
 def _extract_stations_from_section_7(lines: list[str]) -> set[str]:
-    """Extract station names from dossier section 7 (Coverage).
-    
-    Handles two formats:
-    1. With "### Stations covered" subsection
-    2. Simple list directly after section 7 header
-    """
-    stations = set()
-    in_stations_covered = False
-    seen_stations_covered_header = False
-    
+    """Station names from section 7: a ``### Stations covered`` list or a simple one."""
+    stations: set[str] = set()
+    in_station_list = False
     for line in lines:
         stripped = line.strip()
-        
-        # Check for "Stations covered" header
         if stripped.startswith("###") and "Stations covered" in stripped:
-            in_stations_covered = True
-            seen_stations_covered_header = True
+            in_station_list = True
             continue
-        
-        # Stop at next subsection header if we're in stations covered
-        if in_stations_covered and stripped.startswith("###"):
+        if in_station_list and stripped.startswith("###"):
             break
-        
-        # If no "Stations covered" header, treat all non-empty, non-descriptive lines as potential stations
-        if not seen_stations_covered_header and in_stations_covered:
-            # We're in simple format - stop at next section or empty-ish lines
-            pass
-        
-        if in_stations_covered and stripped:
-            # Skip descriptive lines
-            if (stripped.startswith("Built") or stripped.startswith("Tentative") or 
-                stripped.startswith("and ") or stripped.startswith("so ") or
-                stripped.startswith("the ") or stripped.startswith("a ") or
-                stripped.startswith("an ") or "deliberately excluded" in stripped or
-                "sites with no pads" in stripped):
-                continue
-            # Split by common separators (· • ,)
-            for part in re.split(r"[·•,\n]", stripped):
-                part = part.strip().strip("`").strip("*").strip()
-                if part and len(part) > 2:
-                    # Filter out descriptive text - only keep things that look like station names
-                    if not part.lower().startswith("the ") and not part.lower().startswith("a ") and not part.lower().startswith("an "):
-                        stations.add(_normalize_station_name(part))
-        
-        # Auto-enter stations_covered mode if we see a line that looks like a station list
-        # (contains · separator and no descriptive prefixes) and we haven't seen the header
-        if not seen_stations_covered_header and not in_stations_covered and stripped:
-            if ("·" in stripped or "•" in stripped) and not (stripped.startswith("Built") or stripped.startswith("Tentative") or "deliberately" in stripped):
-                in_stations_covered = True
-                # Process this line
-                if (stripped.startswith("Built") or stripped.startswith("Tentative") or 
-                    stripped.startswith("and ") or stripped.startswith("so ") or
-                    stripped.startswith("the ") or stripped.startswith("a ") or
-                    stripped.startswith("an ") or "deliberately excluded" in stripped or
-                    "sites with no pads" in stripped):
-                    continue
-                for part in re.split(r"[·•,\n]", stripped):
-                    part = part.strip().strip("`").strip("*").strip()
-                    if part and len(part) > 2:
-                        if not part.lower().startswith("the ") and not part.lower().startswith("a ") and not part.lower().startswith("an "):
-                            stations.add(_normalize_station_name(part))
-    
+        if in_station_list:
+            if stripped and not _is_descriptive(stripped):
+                stations |= _parse_station_list(stripped)
+            continue
+        if stripped and _starts_simple_station_list(stripped):
+            in_station_list = True
+            if not _is_descriptive(stripped):
+                stations |= _parse_station_list(stripped)
     return stations
 
 

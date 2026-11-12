@@ -7,24 +7,23 @@ for a gate; they do refuse impossible or invalid operations.
 """
 
 import datetime
-import os
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from edcg.common.config import load_config, resolve_edcopilot_root
+from edcg.common.layout import (
+    CUSTOM_FILE_NAME,
+    PROVENANCE_RE,
+    resolve_custom_file,
+)
 from edcg.repo.gitrepo import GitRepo
 
 COMMIT_PREFIX = "edcg"
-CUSTOM_FILE_NAME = "EDCoPilot.SpeechExtensions.Custom.txt"
+
+__all__ = ["CUSTOM_FILE_NAME", "PROVENANCE_RE", "WriteResult", "write_content"]
 
 #: Provenance triple's first field: the generator version.
 VERSION = "0.1.0"
-
-# A provenance comment opens the authored region; everything above the first
-# one is EDCoPilot's own text.
-PROVENANCE_RE = re.compile(r"^<!--\s*provenance:(?P<body>.*?)-->\s*$")
 
 
 @dataclass(frozen=True)
@@ -79,23 +78,6 @@ def _append_co_author_trailer(message: str, co_author: Optional[str]) -> str:
     return f"{message}\n\nCo-authored-by: {trailer}"
 
 
-def _custom_file_path() -> tuple[Path, object]:
-    """Resolve EDCoPilot's custom file and the config used to reach it.
-
-    Resolution is lazy, per call, because the roots can change between calls
-    (the skill resolves them from the environment and the content repo's config
-    file each time rather than caching a stale answer).
-    """
-    config = load_config(os.environ)
-    root = resolve_edcopilot_root(config.content_root, os.environ).path
-    if root is None:
-        raise FileNotFoundError(
-            "Could not resolve EDCoPilot's root: set EDCG_EDCOPILOT_ROOT or store "
-            "roots.edcopilot in the content repo's config file"
-        )
-    return root / CUSTOM_FILE_NAME, config
-
-
 def write_content(
     system_name: str,
     content_block: str = "",
@@ -129,7 +111,7 @@ def write_content(
     Commit message format:
     edcg: content {system}
     """
-    custom_file, config = _custom_file_path()
+    custom_file, config = resolve_custom_file()
 
     block = (content_block or "").strip()
     if not block and not custom_file.exists():

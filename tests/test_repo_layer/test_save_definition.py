@@ -111,7 +111,6 @@ class TestSaveDefinitionTool:
         from edcg.common.config import Config
         config = Config(
             content_definitions_root=temp_content_definitions,
-            content_root=temp_content_definitions,
             auto_commit=True,
         )
         return config

@@ -6,7 +6,6 @@ config file, then "ask").
 """
 
 import os
-import re
 import tempfile
 import tomllib
 from dataclasses import dataclass
@@ -15,12 +14,6 @@ from typing import Mapping, Optional
 
 CONFIG_FILENAME = "edcopilot-customization-generator.toml"
 DEFAULT_RAVEN_API_URL = "https://ravencolonial100-awcbdvabgze4c5cq.canadacentral-01.azurewebsites.net"
-DEFAULT_LOG_LEVEL = "INFO"
-
-# "[roots]" with an optional trailing comment, e.g. "[roots]  # where it lives"
-_ROOTS_HEADER = re.compile(r"^\[\s*roots\s*\]\s*(?:#.*)?$")
-# "edcopilot =", '"edcopilot" =' or "'edcopilot' ="
-_EDCOPILOT_KEY = re.compile(r"""^\s*(?:"edcopilot"|'edcopilot'|edcopilot)\s*=""")
 
 
 class ConfigError(Exception):
@@ -51,16 +44,13 @@ class Config:
 
     # Paths
     content_definitions_root: Path
-    content_root: Path
     edcopilot_logs_dir: Optional[Path] = None
 
     # Optional settings
     auto_commit: bool = True
     raven_api_url: str = DEFAULT_RAVEN_API_URL
     inara_api_key: Optional[str] = None
-    deepl_api_key: Optional[str] = None
     spansh_enabled: bool = True
-    log_level: str = DEFAULT_LOG_LEVEL
 
 
 def _get_env_var(env: Mapping[str, str], key: str) -> Optional[str]:
@@ -187,14 +177,11 @@ def load_config(env: Mapping[str, str]) -> Config:
 
     return Config(
         content_definitions_root=content_root,
-        content_root=content_root,
         edcopilot_logs_dir=edcopilot_logs_dir,
         auto_commit=_str_to_bool(_env_value(env, "EDCG_AUTO_COMMIT") or "true"),
         raven_api_url=_env_value(env, "EDCG_RAVEN_API_URL") or DEFAULT_RAVEN_API_URL,
         inara_api_key=_env_value(env, "EDCG_INARA_API_KEY"),
-        deepl_api_key=_env_value(env, "EDCG_DEEPL_API_KEY"),
         spansh_enabled=_str_to_bool(_env_value(env, "EDCG_SPANSH_ENABLED") or "true"),
-        log_level=_env_value(env, "EDCG_LOG_LEVEL") or DEFAULT_LOG_LEVEL,
     )
 
 
@@ -221,17 +208,13 @@ def content_root_state(root: Path) -> str:
     """Return ``"blank"`` or ``"existing"`` for a content root.
 
     A root is "existing" when it has a ``systems/`` directory or a config file;
-    anything else is blank (and blank is not an error).
+    anything else is blank (and blank is not an error). The layout knowledge
+    lives in :mod:`edcg.common.layout`; this name stays here for callers that
+    think of it as root resolution.
     """
-    systems_dir = root / "systems"
-    if systems_dir.is_dir():
-        return "existing"
+    from edcg.common.layout import content_root_state as _state
 
-    config_file = root / CONFIG_FILENAME
-    if config_file.is_file():
-        return "existing"
-
-    return "blank"
+    return _state(root)
 
 
 def _config_file(root: Path) -> Path:
@@ -297,66 +280,3 @@ def resolve_edcopilot_root(root: Path, env: Mapping[str, str]) -> EdcopilotRootR
 
     return EdcopilotRootResult(path=None, source="ask", stale=None)
 
-
-def read_stored_root(root: Path) -> Optional[Path]:
-    """Read the stored EDCoPilot root from the content repo's config file."""
-    stored_raw = _read_stored_raw(root)
-    return _stored_path(root, stored_raw) if stored_raw is not None else None
-
-
-def _toml_string(value: str) -> str:
-    """Escape a value for a TOML basic string."""
-    return value.replace("\\", "\\\\").replace('"', '\\"')
-
-
-def write_stored_root(root: Path, path: Path) -> None:
-    """Store the EDCoPilot root in the content repo's config file.
-
-    The file is created when absent. Only the ``edcopilot`` key inside the
-    ``[roots]`` table is touched, so any other keys, tables and comments survive.
-    The path is stored with forward slashes. A malformed config file raises
-    ``ConfigError`` instead of being rewritten blindly.
-    """
-    config_file = _config_file(root)
-    _read_config_data(config_file)
-
-    line = f'edcopilot = "{_toml_string(Path(path).as_posix())}"'
-
-    text = config_file.read_text(encoding="utf-8") if config_file.exists() else ""
-    lines = text.splitlines()
-
-    roots_start = next(
-        (index for index, existing in enumerate(lines) if _ROOTS_HEADER.match(existing.strip())),
-        None,
-    )
-
-    if roots_start is None:
-        while lines and not lines[-1].strip():
-            lines.pop()
-        if lines:
-            lines.append("")
-        lines.extend(["[roots]", line])
-    else:
-        section_end = len(lines)
-        for index in range(roots_start + 1, len(lines)):
-            if lines[index].lstrip().startswith("["):
-                section_end = index
-                break
-
-        replaced = False
-        for index in range(roots_start + 1, section_end):
-            if _EDCOPILOT_KEY.match(lines[index]):
-                lines[index] = line
-                replaced = True
-                break
-
-        if not replaced:
-            lines.insert(roots_start + 1, line)
-
-    new_text = "\n".join(lines) + "\n"
-    try:
-        tomllib.loads(new_text)
-    except tomllib.TOMLDecodeError as exc:
-        raise ConfigError(f"Cannot write config file {config_file}: {exc}") from exc
-
-    config_file.write_text(new_text, encoding="utf-8", newline="\n")

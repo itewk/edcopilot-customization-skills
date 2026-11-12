@@ -34,9 +34,7 @@ class TestLoadConfig:
                 "EDCG_AUTO_COMMIT": "false",
                 "EDCG_RAVEN_API_URL": "https://custom.raven.url",
                 "EDCG_INARA_API_KEY": "inara-key-123",
-                "EDCG_DEEPL_API_KEY": "deepl-key-456",
                 "EDCG_SPANSH_ENABLED": "false",
-                "EDCG_LOG_LEVEL": "DEBUG",
             }
 
             config = load_config(env_vars)
@@ -45,15 +43,13 @@ class TestLoadConfig:
             # the resolver, which still finds the root the env var names.
             assert not hasattr(config, "edcopilot_root")
             assert (
-                resolve_edcopilot_root(config.content_root, env_vars).path
+                resolve_edcopilot_root(config.content_definitions_root, env_vars).path
                 == edcopilot_root
             )
             assert config.auto_commit is False
             assert config.raven_api_url == "https://custom.raven.url"
             assert config.inara_api_key == "inara-key-123"
-            assert config.deepl_api_key == "deepl-key-456"
             assert config.spansh_enabled is False
-            assert config.log_level == "DEBUG"
 
     def test_load_config_with_only_required_env_vars(self):
         """Test load_config loads with only required env vars (uses defaults for optional)."""
@@ -75,16 +71,14 @@ class TestLoadConfig:
             # the resolver, which still finds the root the env var names.
             assert not hasattr(config, "edcopilot_root")
             assert (
-                resolve_edcopilot_root(config.content_root, env_vars).path
+                resolve_edcopilot_root(config.content_definitions_root, env_vars).path
                 == edcopilot_root
             )
             # Check defaults
             assert config.auto_commit is True
             assert config.raven_api_url == "https://ravencolonial100-awcbdvabgze4c5cq.canadacentral-01.azurewebsites.net"
             assert config.inara_api_key is None
-            assert config.deepl_api_key is None
             assert config.spansh_enabled is True
-            assert config.log_level == "INFO"
 
     def test_config_case_insensitive_env_vars(self):
         """Test load_config loads env vars case-insensitively."""
@@ -106,7 +100,7 @@ class TestLoadConfig:
             # environment variable that named the root.
             assert not hasattr(config, "edcopilot_root")
             assert (
-                resolve_edcopilot_root(config.content_root, env_vars).path
+                resolve_edcopilot_root(config.content_definitions_root, env_vars).path
                 == edcopilot_root
             )
 
@@ -179,9 +173,7 @@ class TestConfigFieldNames:
             assert hasattr(config, "auto_commit")
             assert hasattr(config, "raven_api_url")
             assert hasattr(config, "inara_api_key")
-            assert hasattr(config, "deepl_api_key")
             assert hasattr(config, "spansh_enabled")
-            assert hasattr(config, "log_level")
 
 
 class TestConfigDefaults:
@@ -205,9 +197,7 @@ class TestConfigDefaults:
             assert config.auto_commit is True
             assert config.raven_api_url == "https://ravencolonial100-awcbdvabgze4c5cq.canadacentral-01.azurewebsites.net"
             assert config.inara_api_key is None
-            assert config.deepl_api_key is None
             assert config.spansh_enabled is True
-            assert config.log_level == "INFO"
 
 
 class TestConfigValidation:
@@ -276,7 +266,7 @@ class TestCWDResolution:
         # The raw field is gone; the resolver still finds the env-named root.
         assert not hasattr(config, "edcopilot_root")
         assert (
-            resolve_edcopilot_root(config.content_root, os.environ).path == edcopilot
+            resolve_edcopilot_root(config.content_definitions_root, os.environ).path == edcopilot
         )
 
     def test_empty_env_var_falls_back_to_cwd(self, monkeypatch, tmp_path):
@@ -293,10 +283,10 @@ class TestCWDResolution:
 
 
 class TestContentRootField:
-    """Tests for the content_root field and content-root error handling."""
+    """Tests for the content root field and content-root error handling."""
 
-    def test_config_exposes_content_root(self, monkeypatch, tmp_path):
-        """Test that Config carries content_root alongside content_definitions_root."""
+    def test_config_exposes_content_definitions_root(self, monkeypatch, tmp_path):
+        """Test that Config carries the one content root field."""
         (tmp_path / "systems").mkdir()
         edcopilot = tmp_path / "edcopilot"
         edcopilot.mkdir()
@@ -305,8 +295,8 @@ class TestContentRootField:
         monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(edcopilot))
 
         config = load_config(os.environ)
-        assert config.content_root == tmp_path
-        assert config.content_root == config.content_definitions_root
+        assert config.content_definitions_root == tmp_path
+        assert not hasattr(config, "content_root")
 
     def test_missing_content_env_raises(self, tmp_path):
         """Test that a missing EDCG_CONTENT_DEFINITIONS_ROOT raises ContentRootError."""
