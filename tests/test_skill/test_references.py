@@ -363,8 +363,11 @@ class TestUpdateInterview:
         assert "one at a time" in lowered
         assert "do not batch" in lowered
         assert "skipped" in lowered
-        assert "unparsable rules or failed fact gathering" in lowered
-        assert "treat a skip as something to investigate, not a pass" in lowered
+        assert "unparsable rules; rules declare no system name; failed fact gathering" in lowered
+        # The guidance is stated once; the old duplicate clause is gone.
+        normalized = " ".join(lowered.split())
+        assert normalized.count("things to investigate, not passes") == 1
+        assert "not a pass" not in normalized
 
 
 class TestWritingBrief:

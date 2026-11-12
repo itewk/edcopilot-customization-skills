@@ -24,7 +24,8 @@ Python 3.12 or later is required.
 python -m pytest tests/ -q
 ```
 
-668 passed, 10 deselected.
+The 10 integration tests are part of the full suite and skip unless their
+environment variables are set (see Test Constraints below).
 
 ```powershell
 # Hermetic subset (no network, no real EDCoPilot folders)
@@ -66,7 +67,8 @@ The trailers must be adjacent in the commit message.
 
 ### Known Test Outcomes
 
-- Full suite: 682 passed, 10 deselected
+- Full suite: green with or without integration credentials; the 10 integration
+  tests skip when their environment variables are unset
 - Hermetic subset: passes without network or EDCoPilot integration
 
 ## Adding a Skill

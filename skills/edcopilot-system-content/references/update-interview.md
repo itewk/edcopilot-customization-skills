@@ -228,6 +228,6 @@ the changed systems one at a time: Phases 1-4, then validate, then save, before
 the next system. Do not batch validation or save calls across systems; systems
 without changes need no content work.
 
-A system with an `error` (unparsable rules or failed fact gathering) is reported
+A system with an `error` (unparsable rules; rules declare no system name; failed fact gathering) is reported
 rather than dropped; a system without a rules file is `skipped`. Both are things
-to investigate, not passes: treat a skip as something to investigate, not a pass.
+to investigate, not passes.
