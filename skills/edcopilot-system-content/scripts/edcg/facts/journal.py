@@ -5,12 +5,13 @@ and play session timestamps.
 """
 
 import json
+import os
 import platform
 import warnings
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Mapping
 
 
 @dataclass
@@ -38,12 +39,36 @@ class JournalData:
     last_play_session: Optional[datetime]
 
 
-def find_journal_dir() -> Optional[Path]:
+def find_journal_dir(env: Mapping[str, str] | None = None) -> Optional[Path]:
     """Find the Elite Dangerous journal directory for the current platform.
+
+    When ``EDCG_JOURNAL_DIR`` is present in the environment, that path is
+    checked first and returned only if it contains ``Journal.*.log`` files. An
+    unset, invalid, or unreadable override falls through to the per-platform
+    candidates unchanged.
+
+    Args:
+        env: Environment mapping to read; defaults to ``os.environ``.
 
     Returns:
         Path to the journal directory if found, None otherwise.
     """
+    environment = os.environ if env is None else env
+
+    override = environment.get("EDCG_JOURNAL_DIR")
+    if override:
+        candidate = Path(override)
+        # Only return the override if it is a readable dir holding journals.
+        if candidate.is_dir():
+            try:
+                has_journals = any(candidate.glob("Journal.*.log"))
+            except OSError:
+                # An unreadable override means "no journals here", not a crash.
+                has_journals = False
+            if has_journals:
+                return candidate
+
+    # Fall through to existing platform-specific logic
     home = Path.home()
     system = platform.system()
 

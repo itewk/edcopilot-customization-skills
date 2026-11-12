@@ -666,16 +666,18 @@ class TestReferenceCrossLinks:
 class TestEnvironmentVariables:
     """Every EDCG_* variable the code reads is explained where setup points."""
 
-    def test_config_reads_no_undocumented_environment_variable(self):
-        config_py = (
-            SKILL_DIR
-            / "scripts"
-            / "edcg"
-            / "common"
-            / "config.py"
-        )
-        names = set(re.findall(r"EDCG_[A-Z_]+", config_py.read_text(encoding="utf-8")))
-        assert names, "config.py reads no EDCG_* variables"
+    def test_code_reads_no_undocumented_environment_variable(self):
+        sources = [
+            SKILL_DIR / "scripts" / "edcg" / "common" / "config.py",
+            SKILL_DIR / "scripts" / "edcg" / "facts" / "journal.py",
+        ]
+        names: set[str] = set()
+        for source in sources:
+            names |= set(
+                re.findall(r"EDCG_[A-Z_]+", source.read_text(encoding="utf-8"))
+            )
+        assert names, "the scanned sources read no EDCG_* variables"
+        assert "EDCG_JOURNAL_DIR" in names, "journal.py no longer declares its override"
         documented = _read(WORKFLOW)
         missing = sorted(name for name in names if name not in documented)
         assert not missing, (

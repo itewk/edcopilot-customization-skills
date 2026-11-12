@@ -29,6 +29,7 @@ that is unset or empty falls back to the default in the table.
 | `EDCG_EDCOPILOT_ROOT` | The runtime root (EDCoPilot's "User custom files" folder). Resolution order: this variable when it names an existing directory, then `roots.edcopilot` in the content repository's config file (a relative value resolves against the content root), then ask the user. |
 | `EDCG_CONTENT_DEFINITIONS_ROOT` | Content root override. Defaults to the current working directory; it must name an existing writable directory. |
 | `EDCG_EDCOPILOT_LOGS_DIR` | Logs directory override. Defaults to the `logs/` sibling of the EDCoPilot root, falling back to `logs/` inside it. |
+| `EDCG_JOURNAL_DIR` | Elite Dangerous journal directory override. When set, this path is checked first for Journal.*.log files. If found, it's used; otherwise falls through to the platform-specific candidates. |
 | `EDCG_AUTO_COMMIT` | Gates the runtime writes only: `write-content`, `markdb add` and `markdb remove` commit when it is true (the default). `save-definition` always commits, and `init` commits unless `--no-git` was passed. |
 | `EDCG_INARA_API_KEY` | Inara API key. When unset, Inara checks are skipped and `audit` reports "Inara API key is not configured." — the answer to "why is Inara unavailable". |
 | `EDCG_SPANSH_ENABLED` | Whether Spansh is queried. Defaults to true. |

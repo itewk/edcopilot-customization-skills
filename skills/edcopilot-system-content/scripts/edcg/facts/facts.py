@@ -5,6 +5,7 @@ a unified SystemFacts object with conflict detection and source attribution.
 Provides diff computation between dossier versions for LLM prompt building.
 """
 
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional, Protocol
@@ -377,7 +378,7 @@ async def gather_facts(
             pass
 
     # --- Parse Journal ---
-    journal_dir = find_journal_dir()
+    journal_dir = find_journal_dir(os.environ)
     if journal_dir:
         journal_data = parse_journal(journal_dir)
         facts.journal_data = journal_data

@@ -1,5 +1,6 @@
 """Tests for Fact Aggregation & Diff Engine."""
 
+import os
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -242,6 +243,75 @@ class TestGatherFacts:
             assert len(facts.non_landable_sites) == 0
             assert len(facts.journal_only_stations) == 0  # Alpha Station is in Raven
             assert facts.raven_sites_loaded is True
+
+    @pytest.mark.asyncio
+    async def test_gather_facts_uses_the_journal_directory_override(
+        self, tmp_path, monkeypatch, mock_config, mock_raven_client
+    ):
+        """EDCG_JOURNAL_DIR reaches parse_journal through gather_facts.
+
+        find_journal_dir is deliberately *not* patched here: facts.py must pass
+        os.environ to the probe and the override must win over the real machine,
+        which is what makes a user-supplied journal folder visible at all.
+        """
+        journal_dir = tmp_path / "journal"
+        journal_dir.mkdir()
+        (journal_dir / "Journal.20240101.log").write_text(
+            '{"timestamp": "2024-01-15T10:00:00Z", "event": "FSDJump", '
+            '"StarSystem": "Test System", "StarPos": [0.0, 0.0, 0.0]}\n'
+            '{"timestamp": "2024-01-15T10:30:00Z", "event": "Docked", '
+            '"StationName": "Override Station", "StarSystem": "Test System", '
+            '"MarketID": 128049152}\n',
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("EDCG_JOURNAL_DIR", str(journal_dir))
+        mock_raven_client.get_system.return_value = RavenSystem(
+            name="Test System", architect="Test Architect", revision=1, bodies=[]
+        )
+        mock_raven_client.get_sites.return_value = []
+        mock_config.inara_api_key = None
+        mock_config.spansh_enabled = False
+
+        facts = await gather_facts(
+            "Test System", mock_config, raven_client=mock_raven_client
+        )
+
+        assert facts.journal_data is not None
+        assert [s.name for s in facts.journal_data.docked_stations] == [
+            "Override Station"
+        ]
+        assert facts.journal_data.docked_stations[0].market_id == 128049152
+        assert facts.journal_data.last_play_session == datetime(
+            2024, 1, 15, 10, 30, 0, tzinfo=UTC
+        )
+        # The dock is cross-referenced into the facts, not merely parsed.
+        assert [s.name for s in facts.journal_only_stations] == [
+            "Override Station"
+        ]
+
+    @pytest.mark.asyncio
+    async def test_gather_facts_passes_os_environ_to_the_journal_probe(
+        self, mock_config, mock_raven_client
+    ):
+        """facts.py must hand os.environ to find_journal_dir explicitly.
+
+        Today the zero-argument call behaves identically (the probe defaults to
+        os.environ), so only the call shape pins the wiring against regression;
+        the end-to-end override test above covers the observable behaviour.
+        """
+        mock_raven_client.get_system.return_value = RavenSystem(
+            name="Test System", architect="Test", revision=1, bodies=[]
+        )
+        mock_raven_client.get_sites.return_value = []
+        mock_config.inara_api_key = None
+        mock_config.spansh_enabled = False
+
+        with patch("edcg.facts.facts.find_journal_dir", return_value=None) as probe:
+            await gather_facts(
+                "Test System", mock_config, raven_client=mock_raven_client
+            )
+
+        probe.assert_called_once_with(os.environ)
 
     @pytest.mark.asyncio
     async def test_gather_facts_maps_body_num_by_raven_body_id(self, mock_config, mock_raven_client):

@@ -18,6 +18,13 @@ def clean_env(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("EDCG_CONTENT_DEFINITIONS_ROOT", raising=False)
     monkeypatch.delenv("EDCG_EDCOPILOT_ROOT", raising=False)
+    # Journal discovery must not read the real machine: clear the override and
+    # point Path.home at an empty directory. Tests that need a journal opt in by
+    # setting EDCG_JOURNAL_DIR themselves.
+    monkeypatch.delenv("EDCG_JOURNAL_DIR", raising=False)
+    empty_home = tmp_path / "empty-home"
+    empty_home.mkdir()
+    monkeypatch.setattr(cli.Path, "home", lambda: empty_home)
     monkeypatch.setattr(cli, "_check_import", lambda module: (True, "importable"))
     monkeypatch.setattr(cli, "_git_binary", lambda: "git version 2.44.0")
     monkeypatch.setattr(
@@ -34,17 +41,40 @@ def _status(lines):
     return [line for line in lines if line.startswith(("OK", "FAIL"))]
 
 
-def test_doctor_passes_every_check(tmp_path, capsys):
-    (tmp_path / "runtime").mkdir()
-    cli.os.environ["EDCG_EDCOPILOT_ROOT"] = str(tmp_path / "runtime")
+def _journal_dir_with_logs(root):
+    """A directory the journal probe accepts, plus one rotated log file."""
+    journal_dir = root / "journal"
+    journal_dir.mkdir()
+    (journal_dir / "Journal.20240101.log").write_text(
+        '{"timestamp": "2024-01-15T10:00:00Z", "event": "Docked"}\n',
+        encoding="utf-8",
+    )
+    return journal_dir
+
+
+def _plausible_edcopilot_root(root):
+    """A directory that passes the "looks like EDCoPilot" check."""
+    runtime = root / "runtime"
+    runtime.mkdir()
+    (runtime / "EDCoPilot.SpeechExtensions.Custom.txt").write_text(
+        "", encoding="utf-8"
+    )
+    return runtime
+
+
+def test_doctor_passes_every_check(tmp_path, capsys, monkeypatch):
+    runtime = _plausible_edcopilot_root(tmp_path)
+    monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(runtime))
+    monkeypatch.setenv("EDCG_JOURNAL_DIR", str(_journal_dir_with_logs(tmp_path)))
 
     assert cli.main(["doctor"]) == 0
     lines = _status(_lines(capsys))
-    assert len(lines) == 7
+    assert len(lines) == 8
     assert all(line.startswith("OK") for line in lines)
     assert any("python:" in line for line in lines)
     assert any("git:" in line for line in lines)
     assert any("EDCoPilot root:" in line for line in lines)
+    assert any("journal:" in line for line in lines)
 
 
 def test_doctor_fails_on_an_old_python(monkeypatch, capsys):
@@ -134,14 +164,16 @@ def test_doctor_fails_when_the_edcopilot_root_is_unconfigured(tmp_path, capsys):
     assert "set EDCG_EDCOPILOT_ROOT" in out
 
 
-def test_doctor_first_run_shape_is_only_the_root_check(tmp_path, capsys):
+def test_doctor_first_run_shape_is_only_the_root_check(tmp_path, capsys, monkeypatch):
     """A fresh blank directory fails only the unconfigured EDCoPilot root."""
+    monkeypatch.setenv("EDCG_JOURNAL_DIR", str(_journal_dir_with_logs(tmp_path)))
+
     assert cli.main(["doctor"]) == 1
     out = capsys.readouterr().out
 
     status = [line for line in out.splitlines() if line.startswith(("OK", "FAIL"))]
     failures = [line for line in status if line.startswith("FAIL")]
-    assert len(status) == 7
+    assert len(status) == 8
     assert failures == [
         "FAIL EDCoPilot root: not configured (expected on first run)"
     ]
@@ -187,3 +219,29 @@ def test_doctor_reports_an_unusable_content_root(monkeypatch, tmp_path, capsys):
     assert f"FAIL content root:" in out
     assert str(missing) in out
     assert "FAIL EDCoPilot root: content root unavailable" in out
+
+
+def test_doctor_journal_warn_when_not_found(tmp_path, capsys, monkeypatch):
+    """No journal anywhere is a WARN and never changes doctor's exit status.
+
+    The autouse fixture already points Path.home at an empty directory and
+    clears EDCG_JOURNAL_DIR, so this is deterministic on any machine.
+    """
+    monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(_plausible_edcopilot_root(tmp_path)))
+
+    assert cli.main(["doctor"]) == 0
+    out = capsys.readouterr().out
+    assert "WARN journal: not found" in out
+    assert "OK   journal:" not in out
+
+
+def test_doctor_journal_ok_when_dir_has_logs(tmp_path, capsys, monkeypatch):
+    """A valid override yields an OK line naming the resolved journal path."""
+    journal_dir = _journal_dir_with_logs(tmp_path)
+    monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(_plausible_edcopilot_root(tmp_path)))
+    monkeypatch.setenv("EDCG_JOURNAL_DIR", str(journal_dir))
+
+    assert cli.main(["doctor"]) == 0
+    out = capsys.readouterr().out
+    assert f"OK   journal: {journal_dir}" in out
+    assert "WARN journal:" not in out
