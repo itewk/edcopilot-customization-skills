@@ -12,55 +12,37 @@ gates, not code changes.
 
 ## Before 1.0 — bugs and issues to resolve
 
-These are defects or misleading behaviour in the shipped product. One plan
-covers them (see `docs/superpowers/plans/` — "pre-1.0 fixes").
+All eight items below were resolved by the pre-1.0 fixes batch (commits
+`aa02995`…`8d8bdbc`, 2026-11-11; see `docs/superpowers/plans/2026-11-11-pre-1-fixes.md`
+and the SDD ledger for the full record). They are kept here as the resolution
+record until the `v1.0.0` tag.
 
-1. **Journal directory discovery is hard-coded and silent when it misses.**
-   `edcg/facts/journal.py:find_journal_dir()` checks per-platform candidates
-   (`%USERPROFILE%\Saved Games\Frontier Developments\Elite Dangerous`, its
-   OneDrive variant; the Steam/Proton and native Linux paths; the macOS
-   Application Support path) and returns `None` when none contains
-   `Journal.*.log` — so relocated Saved Games, second Steam libraries, or
-   redirected OneDrive silently drop the player journal, the workflow's
-   ground-truth source (`facts.py:380-392` proceeds with empty journal
-   stations). Fix sketch: `EDCG_JOURNAL_DIR` override resolved first and
-   validated for `Journal.*.log`; a `doctor` check reporting the resolved
-   journal path as `OK`/`WARN`; a row in the environment-variable reference;
-   tests for override-wins and missing-journal-warns.
-2. **Bounds keys that name no tag kind are silently inert.** Live content
-   showed 2 of 3 `*.rules.toml` files declaring `[content.bounds]` with
-   snake_case keys (`system_greeting`, `station_chatter`, …) that never match
-   `tag.kind` (`resolve_bounds` / `rule_content_bounds`). Station-level
-   overrides warn; kind-level ones do not. Fix sketch: a warning finding for
-   any bounds key that matches no known kind, at both kind and station
-   sub-key level, with tests. Then correct the author's live rules files
-   (requires human OK — they are content).
-3. **`markdb` on a missing custom file has no dedicated message.** The
-   unmatched-tag warning is suppressed when the file is absent, leaving only
-   empty `modified_tags`/`commit_hashes`. Fix sketch: a clear error naming the
-   missing path and the resolved EDCoPilot root.
-4. **Exit-code semantics at the edges.** `check-logs` exits 0 when the
-   EDCoPilot root is unresolvable (`ok:false` only in JSON); `branch finalize
-   --push` exits 0 when the push is refused; `push_status` reads `"failed"`
-   when `--push` had nothing to attempt. Decision (recorded): refused or
-   unresolved actions exit 1, aligned with "1 = check failure"; `push_status`
-   gains a distinct `nothing_to_push` value. Apply uniformly with tests.
-5. **`Config.edcopilot_root` is a second authority with different semantics.**
-   `load_config` copies the raw env value while consumers are supposed to use
-   `resolve_edcopilot_root`. Fix sketch: remove the raw field if no caller
-   remains, or make it the resolved value; migrate callers.
-6. **`os.access(W_OK)` on Windows is unreliable** for the content-root
-   writability check. Fix sketch: a probe write, or a documented best-effort
-   with the failure mode named.
-7. **Docs accuracy sweep (release-blocking polish).** CONTRIBUTING hardcodes
-   suite counts that rot (currently `668`/`682` against 730 — remove the
-   numbers); `references/update-interview.md` self-duplicating clause at the
-   end of the skip/error paragraph and its error taxonomy listing two of three
-   causes (missing declared system name is absent). The reference-internal
-   bare-sibling link form is an accepted deviation (links resolve; covered by
-   a resolution test) — do not churn it.
-8. **Pin `skills-ref` in CI** to a commit or tag (currently the
-   default-branch tip) — release reproducibility.
+1. ~~Journal directory discovery~~ — **resolved** (`aa02995`): `EDCG_JOURNAL_DIR`
+   override validated for `Journal.*.log`; doctor reports the resolved journal
+   path as `OK`/`WARN` (a WARN never fails doctor); env-var documented and
+   guard-tested; the `gather_facts` wiring is pinned end-to-end.
+2. ~~Bounds keys matching no tag kind~~ — **resolved** (`2bb83a8`): warning
+   findings at kind and station level, base-level pass included; the live
+   content's inert keys are asserted by the integration test. Correcting the
+   live rules files remains a human-approved content edit.
+3. ~~markdb missing custom file~~ — **resolved** (`35d7580`): exit 1 naming the
+   expected file and the resolved root, before any mutation; docs updated.
+4. ~~Exit-code semantics at the edges~~ — **resolved** (`fa3fd57`): refused or
+   unresolved actions exit 1; `push_status` gains `nothing_to_push`; the
+   predicate keys off `push_status`. `--no-merge --push` is rejected at the
+   parser (exit 2, `8d8bdbc`). Merge-failure-without-`--push` exits 0 by policy.
+5. ~~`Config.edcopilot_root` second authority~~ — **resolved** (`222d538`): field
+   removed; a surviving production reader and an env-blanking bug in
+   `resolve_runtime_root` were found and fixed; test fixtures migrated.
+6. ~~`os.access(W_OK)` unreliability~~ — **resolved** (`015dc15`, `8d8bdbc`):
+   real write probe with a unique `mkstemp` name, `finally` cleanup separated
+   from the write-failure verdict, deterministic tests including the
+   `mkstemp` PermissionError path.
+7. ~~Docs accuracy sweep~~ — **resolved** (`0e088ac`): CONTRIBUTING counts
+   removed (guarded), update-interview duplication fixed (guarded) and
+   taxonomy completed.
+8. ~~`skills-ref` pin~~ — **resolved** (`bc5e90d`): CI pins the install to
+   commit `83021e2be457a9b6679148719c1f6074f0ad975e`, validated locally.
 
 ## After 1.0 — features and improvements
 
