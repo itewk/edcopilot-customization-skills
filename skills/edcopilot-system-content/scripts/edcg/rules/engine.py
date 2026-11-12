@@ -133,41 +133,7 @@ def get_placement(build_type: str) -> str:
     return "unknown"
 
 
-def load_system_rules(rules_path: Path) -> dict[str, Any]:
-    """Load a system-specific rules TOML file."""
-    with rules_path.open("rb") as f:
-        return tomllib.load(f)
 
-
-def load_house_rules(rules_path: Path) -> dict[str, Any]:
-    """Load house rules (all.rules.toml) from definitions root."""
-    with rules_path.open("rb") as f:
-        return tomllib.load(f)
-
-
-def merge_rules(base: dict[str, Any], house: dict[str, Any], system: dict[str, Any]) -> dict[str, Any]:
-    """Merge base, house, and system rules following the precedence order.
-
-    Precedence: base.toml → house (all.rules.toml) → system (system.rules.toml)
-    House rules can only override, not declare new impl.
-    System rules can only override, not declare new impl.
-    """
-    import copy
-    merged = copy.deepcopy(base)
-
-    def _deep_merge(target: dict[str, Any], source: dict[str, Any]) -> None:
-        for key, value in source.items():
-            if key in target and isinstance(target[key], dict) and isinstance(value, dict):
-                _deep_merge(target[key], value)
-            else:
-                target[key] = value
-
-    if "rules" in house:
-        _deep_merge(merged.setdefault("rules", {}), house["rules"])
-    if "rules" in system:
-        _deep_merge(merged.setdefault("rules", {}), system["rules"])
-
-    return merged
 
 
 __all__ = [
@@ -182,7 +148,4 @@ __all__ = [
     "get_facility_class",
     "get_facility_name",
     "get_placement",
-    "load_system_rules",
-    "load_house_rules",
-    "merge_rules",
 ]

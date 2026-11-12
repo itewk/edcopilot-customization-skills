@@ -13,6 +13,17 @@ from typing import Any
 
 from edcg.common.config import get_config
 from edcg.common.layout import PROVENANCE_RE, systems_dir as layout_systems_dir
+from edcg.rules.dossier import (
+    _parse_dossier_sections,
+    _extract_site_table,
+    _get_landable_build_types,
+    _extract_voices_from_section_8,
+    _normalize_station_name,
+    _is_descriptive,
+    _parse_station_list,
+    _starts_simple_station_list,
+    _extract_stations_from_section_7
+)
 
 # Rule data ships beside the validation module as package data.
 RULE_DATA_DIR = Path(__file__).resolve().parent / "data"
