@@ -76,12 +76,9 @@ def save_definition(
     commit_message = _append_co_author_trailer(commit_message, commit_co_author)
 
     # Git operations: always commit when the content root is a repository.
-    repo = GitRepo(repo_root)
-    try:
+    with GitRepo(repo_root) as repo:
         repo.add_all()
         commit_hash = repo.commit(commit_message)
-    finally:
-        repo.close()
 
     # Determine files changed
     files_changed = [

@@ -210,17 +210,23 @@ def test_validate_content_prints_json(monkeypatch, tmp_path, capsys):
 
 def test_missing_payload_is_a_usage_error(capsys):
     assert _run(["validate-definition"], stdin="") == 2
-    assert "JSON payload" in json.loads(capsys.readouterr().out)["error"]
+    captured = capsys.readouterr()
+    assert "JSON payload" in captured.err
+    assert captured.out == ""
 
 
 def test_invalid_json_is_a_usage_error(capsys):
     assert _run(["validate-definition"], stdin="{not json") == 2
-    assert "invalid JSON" in json.loads(capsys.readouterr().out)["error"]
+    captured = capsys.readouterr()
+    assert "invalid JSON" in captured.err
+    assert captured.out == ""
 
 
 def test_payload_missing_a_required_field_is_a_usage_error(capsys):
     assert _run(["validate-definition"], stdin='{"dossier": "x"}') == 2
-    assert "required field" in json.loads(capsys.readouterr().out)["error"]
+    captured = capsys.readouterr()
+    assert "required field" in captured.err
+    assert captured.out == ""
 
 
 def test_gather_facts_requires_a_system(monkeypatch, tmp_path, capsys):
@@ -381,7 +387,9 @@ def test_get_content_emits_json(monkeypatch, tmp_path, capsys):
 def test_markdb_requires_a_payload_or_tags(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(tmp_path))
     assert _run(["markdb", "add"], stdin="") == 2
-    assert "JSON payload" in json.loads(capsys.readouterr().out)["error"]
+    captured = capsys.readouterr()
+    assert "JSON payload" in captured.err
+    assert captured.out == ""
 
 
 def test_markdb_without_an_action_is_a_usage_error(capsys):
@@ -892,7 +900,7 @@ def test_branch_abort_payload_has_exactly_one_key_per_concept(
 
 
 def test_branch_review_keeps_the_pinned_report_sections(monkeypatch, tmp_path, capsys):
-    """Proposal 8 pins the report shape, including the retained systems section."""
+    """The report names both repositories and derives every count from git."""
     content_root, _ = _branch_environment(monkeypatch, tmp_path)
     _start_branch(capsys, "review sections")
     (content_root / "systems" / "change.txt").write_text("change\n", encoding="utf-8")
@@ -904,8 +912,10 @@ def test_branch_review_keeps_the_pinned_report_sections(monkeypatch, tmp_path, c
     assert "**Branch:** gen/review-sections" in report
     assert "## Content Repo" in report
     assert "## Runtime Root" in report
-    # The (none) section survives proposal 3's deletion of the process mirror.
-    assert "## Systems Affected\n(none)" in report
+    # Branch state is git state: no system list is recorded, so no section
+    # claims one. The diff above is how a reader finds the affected systems.
+    assert "## Systems Affected" not in report
+    assert "systems/change.txt" in report
     assert report.count("Files changed:") == 2
     assert report.count("Insertions:") == 2
     assert report.count("Deletions:") == 2

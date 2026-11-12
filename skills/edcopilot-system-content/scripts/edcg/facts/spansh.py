@@ -7,6 +7,7 @@ No authentication required.
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from types import MappingProxyType
 from typing import Any, Optional
 from urllib.parse import quote
 
@@ -67,7 +68,9 @@ class SpanshClient(ApiClient):
     """
 
     error_type = SpanshAPIError
-    default_headers = {"User-Agent": "EDCoPilot-Customization-Generator/0.1.0"}
+    default_headers = MappingProxyType(
+        {"User-Agent": "EDCoPilot-Customization-Generator/0.1.0"}
+    )
 
     def __init__(
         self,
@@ -199,69 +202,6 @@ class SpanshClient(ApiClient):
             stations=stations,
             bodies=bodies,
             updated=updated,
-        )
-
-    async def search_systems(self, filters: dict[str, Any]) -> list[SpanshSystem]:
-        """Search for systems using Spansh search API.
-
-        Args:
-            filters: Search filters dict (e.g., {"name": {"value": "Bleia Eohn"}}).
-                Note: filter values should be strings, not arrays.
-
-        Returns:
-            List of SpanshSystem objects (summary info from search results).
-
-        Raises:
-            SpanshAPIError: If the request fails.
-        """
-        search_url = f"{self.base_url}/systems/search"
-
-        # Build request payload - Spansh expects filter values as strings
-        payload = {
-            "filters": filters,
-            "size": 50,
-            "page": 0,
-        }
-
-        response = await self._request_with_retry("POST", search_url, json=payload)
-        data = response.json()
-
-        results = []
-        for item in data.get("results", []):
-            system = self._parse_search_result(item)
-            results.append(system)
-
-        return results
-
-    def _parse_search_result(self, data: dict[str, Any]) -> SpanshSystem:
-        """Parse system from search results (less detailed than dump)."""
-        # Parse coordinates
-        coordinates = [data.get("x", 0.0), data.get("y", 0.0), data.get("z", 0.0)]
-
-        # Parse updated timestamp
-        updated_str = data.get("updated_at", "")
-        try:
-            updated = datetime.fromisoformat(updated_str.replace("Z", "+00:00")) if updated_str else datetime.now(timezone.utc)
-        except Exception:
-            updated = datetime.now(timezone.utc)
-
-        # Search results have limited fields - use defaults for missing ones
-        return SpanshSystem(
-            id64=data.get("id64", 0),
-            name=data.get("name", "Unknown"),
-            coordinates=coordinates,
-            population=data.get("population", 0),
-            government=data.get("government", "Unknown"),
-            allegiance=data.get("allegiance", "Unknown"),
-            state=data.get("state", "Unknown"),
-            security=data.get("security", "Unknown"),
-            primary_economy=data.get("primary_economy", "Unknown"),
-            secondary_economy=data.get("secondary_economy", "Unknown"),
-            controlling_minor_faction=data.get("controlling_minor_faction") or data.get("controllingFaction"),
-            stations=[],  # Search results don't include full station details
-            bodies=data.get("bodies", []),
-            updated=updated,
-            distance=data.get("distance"),
         )
 
 

@@ -127,3 +127,18 @@ record until the `v1.0.0` tag.
 - Scripts are self-contained: rule data is package data; `assets/` is
   agent-facing only; `init` is a skeleton command; the agent copies and
   reviews the house rules (script/skill separation, 2026-11-11).
+- One rule entry point: `validate_content(...)` is the only content oracle, and
+  `validate_definition(...)` the only definition oracle. A second, path-based
+  engine (`RuleEngine`/`validate()`), its Markdown rule table and the
+  zero-caller rule-data accessors (`get_raven_config`, `get_vocab`,
+  `get_kinds`, `get_filters`) were deleted rather than kept in parallel
+  (maintainability batch 3 + M6 completion, 2026-11-12). Tests call the
+  production entry point; the two scope-boundary cases call the rule function
+  on a full-payload context because `validate_content` trims the block first.
+- Branch state is git state: `branch start` creates and checks out a matching
+  branch in both repositories and keeps no system list. "Which systems are
+  affected" is answered by reading `systems/` and the branch diff; the review
+  report has no `## Systems Affected` section (2026-11-12).
+- Usage errors (exit 2) print their message on stderr and no JSON on stdout, so
+  a script that parses stdout never mistakes a usage error for a data payload
+  (2026-11-12).

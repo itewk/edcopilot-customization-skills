@@ -175,9 +175,7 @@ def writing_brief_data(config: Config, system_name: str) -> dict:
     landable_stations = _landable_stations_from_dossier(sections)
 
     base = load_base_config(RULE_DATA_DIR)
-    known_tokens = {
-        name.lower() for name in known_token_names(base.get("vocab", {}))
-    }
+    known_tokens = set(known_token_names(base.get("vocab", {})))
     dossier_voices = (
         extract_voices(sections[8][1], known_tokens) if 8 in sections else set()
     )

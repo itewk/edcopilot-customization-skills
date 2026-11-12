@@ -7,7 +7,7 @@ in orbit, without a network call.
 
 import tomllib
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 # Rule data ships beside the engine as package data.
 RULE_DATA_DIR = Path(__file__).resolve().parent / "data"
@@ -15,7 +15,6 @@ RULE_DATA_DIR = Path(__file__).resolve().parent / "data"
 # Lazy-loaded cached resources
 _base_rules: dict[str, Any] | None = None
 _build_types: dict[str, Any] | None = None
-_raven_config: dict[str, Any] | None = None
 
 
 def _load_toml_data(filename: str) -> dict[str, Any]:
@@ -38,32 +37,6 @@ def get_build_types() -> dict[str, Any]:
     if _build_types is None:
         _build_types = _load_toml_data("build_types.toml")
     return _build_types
-
-
-def get_raven_config() -> dict[str, Any]:
-    """Get Raven Colonial API config (raven.toml) - cached after first load."""
-    global _raven_config
-    if _raven_config is None:
-        _raven_config = _load_toml_data("raven.toml")
-    return _raven_config
-
-
-def get_vocab() -> dict[str, Any]:
-    """Get vocabulary from base rules."""
-    return cast(dict[str, Any], get_base_rules().get("vocab", {}))
-
-
-def get_kinds() -> dict[str, Any]:
-    """Get tag kinds from base rules."""
-    return cast(dict[str, Any], get_base_rules().get("kinds", {}))
-
-
-def get_filters() -> dict[str, Any]:
-    """Get filter definitions from base rules."""
-    return cast(
-        dict[str, Any],
-        get_base_rules().get("rules", {}).get("syntax", {}).get("filter_known", {}).get("filters", {}),
-    )
 
 
 def _get_all_build_types() -> dict[str, dict[str, str]]:
@@ -142,9 +115,6 @@ def get_placement(build_type: str) -> str:
     if build_type in placement.get("orbital", []):
         return "orbital"
     return "unknown"
-
-
-
 
 
 __all__ = [

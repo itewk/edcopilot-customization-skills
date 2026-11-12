@@ -112,7 +112,9 @@ class TestDossierTemplateAsset:
         header = "| System | Distance from here | Contents | Attachment |"
         _assert_table_header(bridge, header)
         _assert_no_table_rows(bridge, header)
-        assert "Two nearby systems were colonised for one reason only" in template_str
+        assert "Bridge systems are the nearby systems colonised" in template_str
+        assert "Replace this example with what each one holds" in template_str
+        assert "Two nearby systems were colonised" not in template_str
         assert "Bridge 1" not in bridge
 
     def test_dossier_template_with_body_map_notes(self):

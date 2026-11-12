@@ -150,7 +150,6 @@ class ValidationResult:
     findings: list[Finding]
     passed: bool
     rule_summary: list[dict] = field(default_factory=list)
-    rule_table: str = ""
 
 
 @dataclass
@@ -1103,7 +1102,7 @@ def policy_rules(rules: dict[str, dict]) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# RuleEngine class
+# Rule summary
 # ---------------------------------------------------------------------------
 
 def _first_sentence(text: str) -> str:
@@ -1152,151 +1151,9 @@ def _build_rule_summary(rules: dict[str, dict], findings: list[Finding]) -> list
     return summary
 
 
-def _render_rule_table(summary: list[dict]) -> str:
-    symbols = {"pass": "✅ pass", "warn": "⚠️ warn", "error": "❌ error"}
-    checked = [row for row in summary if row["status"] != "manual"]
-    manual = [row for row in summary if row["status"] == "manual"]
-
-    lines = ["| Rule | What it checks | Result |", "|---|---|---|"]
-    for row in checked:
-        result = symbols.get(row["status"], row["status"])
-        if row["findings"] and row["status"] != "pass":
-            result = f"{result} ({row['findings']} finding(s))"
-        lines.append(f"| `{row['rule']}` | {row['description']} | {result} |")
-
-    if manual:
-        lines += [
-            "",
-            "**Policy rules (confirm manually):**",
-            "",
-            "| Rule | What it checks |",
-            "|---|---|",
-        ]
-        for row in manual:
-            lines.append(f"| `{row['rule']}` | {row['description']} |")
-    return "\n".join(lines)
-
-
-class RuleEngine:
-    """Main validation engine.
-    
-    Loads base, house, and system rules, parses content and dossiers,
-    runs all rule implementations, and returns findings.
-    """
-    
-    def __init__(
-        self,
-        base_rules_path: Path,
-        house_rules_path: Path | None = None,
-        system_rules_path: Path | None = None,
-        systems_dir: Path | None = None,
-    ):
-        self.base_rules_path = base_rules_path
-        self.house_rules_path = house_rules_path
-        self.system_rules_path = system_rules_path
-        self.systems_dir = systems_dir
-        
-        # Load base configuration
-        self.base = load_base_config(base_rules_path.parent)
-        self.base_rules = self.base["rules"]
-        
-        # Load house rules
-        house_declared, house_patches = load_house_rules(house_rules_path, self.base_rules)
-        
-        # Load system rules - either single file or all from systems_dir
-        if systems_dir and systems_dir.exists():
-            system_overrides = load_all_system_rules(systems_dir, self.base_rules)
-        else:
-            system_overrides = load_system_rules(system_rules_path, self.base_rules)
-        
-        # Merge all rules
-        self.rules = merge_rules(
-            self.base_rules,
-            house_declared,
-            house_patches,
-            system_overrides
-        )
-        
-        # Load kinds
-        self.kinds = load_kinds(self.base)
-        
-        # Load per-system configs
-        self.per_system = system_overrides
-
-    def validate(self, content_path: Path, dossier_path: Path | None = None) -> ValidationResult:
-        """Validate content file against all rules.
-        
-        Args:
-            content_path: Path to the content file (EDCoPilot.SpeechExtensions.Custom.txt)
-            dossier_path: Optional path to a dossier file. If not provided, uses dossiers from system rules.
-            
-        Returns:
-            ValidationResult with findings and passed status.
-        """
-        # Parse content
-        content = parse_content(content_path, PROVENANCE_RE, self.kinds)
-        
-        # If dossier_path provided, use it; otherwise use from per_system
-        if dossier_path:
-            # Create a context with just this dossier
-            per_system_with_dossier = {}
-            # We need to temporarily override dossier_paths to return this path
-            # For simplicity, we'll add a dummy system entry
-            dummy_system = {"overrides": {}, "system": {"dossier": str(dossier_path)}}
-            # Extract system name from dossier path or use a default
-            system_name = dossier_path.stem
-            per_system_with_dossier[system_name] = dummy_system
-            # Merge with existing per_system
-            merged_per_system = {**self.per_system, **per_system_with_dossier}
-        else:
-            merged_per_system = self.per_system
-        
-        # Create context
-        ctx = Context(
-            base=self.base,
-            per_system=merged_per_system,
-            content=content,
-            rules=self.rules,
-        )
-        
-        # Run all rule implementations
-        for _impl, rule_ids, fn in implementations(self.rules):
-            # Only run if at least one rule using this impl is not retired
-            if any(ctx.rule(rule_id).get("severity", "error") != "off" for rule_id in rule_ids):
-                fn(ctx)
-        
-        # Sort findings by severity, then rule, then line
-        findings = sorted(ctx.findings, key=lambda f: (
-            SEV_ORDER.get(f.severity, 9), f.rule, f.line or 0
-        ))
-        
-        # Passed = no error findings
-        passed = not any(f.severity == "error" for f in findings)
-
-        rule_summary = _build_rule_summary(self.rules, findings)
-        return ValidationResult(
-            findings=findings,
-            passed=passed,
-            rule_summary=rule_summary,
-            rule_table=_render_rule_table(rule_summary),
-        )
-
-
 # ---------------------------------------------------------------------------
 # Convenience functions
 # ---------------------------------------------------------------------------
-
-def validate(
-    content_path: Path,
-    dossier_path: Path | None,
-    base_rules_path: Path,
-    house_rules_path: Path | None = None,
-    system_rules_path: Path | None = None,
-) -> ValidationResult:
-    """Convenience function for one-off validation."""
-    engine = RuleEngine(base_rules_path, house_rules_path, system_rules_path)
-    return engine.validate(content_path, dossier_path)
-
 
 def validate_content(
     content: str,
@@ -1443,7 +1300,6 @@ def validate_content(
         findings=findings,
         passed=passed,
         rule_summary=rule_summary,
-        rule_table=_render_rule_table(rule_summary),
     )
 
 
@@ -1593,7 +1449,7 @@ def validate_definition(
     if 8 in sections:
         dossier_voices = extract_voices(
             sections[8][1],
-            {name.lower() for name in _token_names(load_base_config(RULE_DATA_DIR))},
+            set(_token_names(load_base_config(RULE_DATA_DIR))),
         )
     else:
         dossier_voices = set()

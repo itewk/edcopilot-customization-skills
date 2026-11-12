@@ -37,9 +37,3 @@ def test_policy_rules_are_manual_not_pass(tmp_path):
     policies = [r for r in rows.values() if r["status"] == "manual"]
     assert policies
     assert all(r["rule"].startswith("filters.") for r in policies)
-
-
-def test_rule_table_contains_symbols_and_both_tables(tmp_path):
-    table = _result(VALID, tmp_path).rule_table
-    assert "✅" in table
-    assert "Policy rules (confirm manually)" in table

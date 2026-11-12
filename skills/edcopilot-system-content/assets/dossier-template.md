@@ -34,9 +34,9 @@ the in-game journal.
 
 ### The bridge systems
 
-Two nearby systems were colonised for one reason only: to extend the colonial
-reach far enough to claim this one. Each holds a single outpost, and the crews
-posted there are the ones who did not get the interesting assignment.
+Bridge systems are the nearby systems colonised to extend the colonial reach far
+enough to claim this one. Replace this example with what each one holds and who
+is posted there.
 
 | System | Distance from here | Contents | Attachment |
 |---|---|---|---|
@@ -212,7 +212,7 @@ completes.
 
 <security_experiment_description>
 
-<farm_restaurant_theme>
+<!-- Replace with the theme note this system's voices refer to. -->
 
 ### Addressing the player
 

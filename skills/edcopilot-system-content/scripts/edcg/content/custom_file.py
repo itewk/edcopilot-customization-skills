@@ -158,14 +158,11 @@ def write_content(
     # Git commit if auto_commit and it's a repo
     commit_hash = None
     if config.auto_commit and GitRepo.is_repo(custom_file.parent):
-        repo = GitRepo(custom_file.parent)
-        try:
+        with GitRepo(custom_file.parent) as repo:
             repo.add_all()
             commit_message = f"{COMMIT_PREFIX}: content {system_name}"
             commit_message = _append_co_author_trailer(commit_message, commit_co_author)
             commit_hash = repo.commit(commit_message)
-        finally:
-            repo.close()
 
     return WriteResult(
         file_path=custom_file,
