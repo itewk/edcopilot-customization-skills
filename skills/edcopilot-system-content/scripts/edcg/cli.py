@@ -35,6 +35,7 @@ from edcg.content.custom_file import CUSTOM_FILE_NAME, write_content
 from edcg.content.markdb import custom_file_exists, markdb_add, markdb_remove
 from edcg.content.rewrite import get_system_content, rewrite_tag
 from edcg.facts.facts import gather_facts
+from edcg.facts.journal import find_journal_dir
 from edcg.repo import branches
 from edcg.repo.audit import build_audit_report
 from edcg.repo.brief import build_update_scan, system_names, writing_brief_data
@@ -297,6 +298,17 @@ def command_doctor(args: argparse.Namespace) -> int:
                 "first run: set EDCG_EDCOPILOT_ROOT or store roots.edcopilot "
                 "in the config file",
             )
+
+    # Check for journal directory
+    journal_dir = find_journal_dir(os.environ)
+    if journal_dir:
+        passed &= _report_line(
+            "journal", True, f"{journal_dir}"
+        )
+    else:
+        # WARN instead of FAIL - journal visibility is informational, not a failure
+        print("WARN journal: not found - set EDCG_JOURNAL_DIR or check Saved Games")
+        # Don't update 'passed' to maintain doctor exit status
 
     return 0 if passed else 1
 

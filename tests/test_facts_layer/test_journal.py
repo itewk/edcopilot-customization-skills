@@ -17,6 +17,20 @@ from edcg.facts.journal import (
 )
 
 
+@pytest.fixture(autouse=True)
+def isolate_journal_env(monkeypatch, tmp_path):
+    """Shield these tests from the real machine.
+
+    EDCG_JOURNAL_DIR is a documented opt-in, so a developer who exported it (as
+    workflow-details.md tells them to) must not turn these tests red, and the
+    real home must not leak its journal folder in either.
+    """
+    monkeypatch.delenv("EDCG_JOURNAL_DIR", raising=False)
+    empty_home = tmp_path / "empty-home"
+    empty_home.mkdir()
+    monkeypatch.setattr(Path, "home", lambda: empty_home)
+
+
 class TestJournalDataStructures:
     """Tests for Journal data structures."""
 
@@ -157,6 +171,57 @@ class TestFindJournalDir:
                     result = find_journal_dir()
                     # Should return the first candidate (Saved Games, not OneDrive)
                     assert result == journal_dir1
+
+    def test_journal_dir_override_wins(self, tmp_path):
+        """Test that EDCG_JOURNAL_DIR override wins when valid."""
+        fake = tmp_path / "fake"
+        fake.mkdir()
+        # A Journal.*.log file makes the override a valid journal directory.
+        (fake / "Journal.20240101.log").write_text('{"timestamp": "2024-01-15T10:00:00Z", "event": "Docked"}\n')
+
+        # The override must win outright: home holds a different valid journal
+        # directory, so a fall-through would return that instead.
+        other = tmp_path / "home" / "Saved Games" / "Frontier Developments" / "Elite Dangerous"
+        other.mkdir(parents=True)
+        (other / "Journal.20240101.log").write_text('{"timestamp": "2024-01-15T10:00:00Z", "event": "Docked"}\n')
+
+        with patch("edcg.facts.journal.Path.home") as mock_home:
+            mock_home.return_value = tmp_path / "home"
+            with patch("platform.system", return_value="Windows"):
+                result = find_journal_dir(env={"EDCG_JOURNAL_DIR": str(fake)})
+                assert result == fake
+
+    def test_journal_dir_override_ignored_without_journal_files(self, tmp_path, monkeypatch):
+        """Test that EDCG_JOURNAL_DIR is ignored when it doesn't contain journal files."""
+        # Create a fake directory without journal files
+        fake = tmp_path / "fake"
+        fake.mkdir()
+
+        # Mock Path.home to return tmp_path so candidates don't find anything
+        with patch("edcg.facts.journal.Path.home") as mock_home:
+            mock_home.return_value = tmp_path
+            with patch("platform.system", return_value="Windows"):
+                # Test with override env var set but no journal files in override dir
+                result = find_journal_dir(env={"EDCG_JOURNAL_DIR": str(fake)})
+                # Should fall through to candidates, which should return None since home is tmp_path
+                assert result is None
+
+    def test_journal_dir_override_unreadable_falls_through(self, tmp_path):
+        """An override whose listing fails is treated as "no journal here"."""
+        locked = tmp_path / "locked"
+        locked.mkdir()
+        real_glob = Path.glob
+
+        def glob_that_denies_access(self, pattern):
+            if self == locked:
+                raise PermissionError(13, "Permission denied", str(self))
+            return real_glob(self, pattern)
+
+        with patch("edcg.facts.journal.Path.glob", glob_that_denies_access), \
+                patch("edcg.facts.journal.Path.home") as mock_home:
+            mock_home.return_value = tmp_path / "empty-home"
+            with patch("platform.system", return_value="Windows"):
+                assert find_journal_dir(env={"EDCG_JOURNAL_DIR": str(locked)}) is None
 
 
 class TestParseJournal:
