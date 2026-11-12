@@ -14,6 +14,8 @@ and ``tests/test_skill/test_assets.py`` guards its neutrality, so there is
 nothing to assert here.
 """
 
+import re
+
 import pytest
 from pathlib import Path
 
@@ -206,14 +208,14 @@ class TestDossierTemplateAsset:
 
         The old test rendered ``unresolved_sites=["[Unknown]", "[Facility?]"]``
         and asserted both names appeared. The static asset is the zero-iteration
-        render, so the loop contributes nothing and the source sentence ends at
-        ``parentheses: .``. There is no ``<unresolved_sites>`` token; asserting
-        one would assert a render that does not exist.
+        render, so the loop contributes nothing; the sentence now describes the
+        square-bracket names instead of trailing off after a colon.
         """
         template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
         template_str = template_str.read_text(encoding="utf-8")
         section_6 = _section(template_str, "## 6. Site list maintenance", "## 7. Coverage")
-        assert "names use square brackets rather than\nparentheses: ." in section_6
+        assert "names are wrapped in square brackets\ninstead of parentheses" in section_6
+        assert "parentheses: ." not in template_str
         assert "<unresolved_sites>" not in template_str
         assert "[Unknown]" not in template_str
         assert "[Facility?]" not in template_str
@@ -227,7 +229,7 @@ class TestDossierTemplateAsset:
             template_str, "### Stations covered", "### Where the remaining themes are heard"
         )
         assert "sites are deliberately excluded" in covered
-        assert "<!-- Covered stations list would be populated here -->" in covered
+        assert "<!-- Fill in the covered stations, comma separated. -->" in covered
         assert "Station A" not in covered
         assert " · " not in covered
 
@@ -237,7 +239,7 @@ class TestDossierTemplateAsset:
         template_str = template_str.read_text(encoding="utf-8")
         voices = _section(template_str, "### Voices used", "### Addressing the player")
         assert "### Voices used" in voices
-        assert "<!-- Voices by category would be populated here -->" in voices
+        assert "<!-- Fill in one row per voice:" in voices
         assert "ControlVoice1" not in voices
         assert "CharVoice1" not in voices
         assert not [ln for ln in voices.splitlines() if ln.startswith("- ")]
@@ -247,7 +249,7 @@ class TestDossierTemplateAsset:
         template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
         template_str = template_str.read_text(encoding="utf-8")
         threads = template_str[template_str.index("## 9. Open threads (TODO)"):]
-        assert "<!-- Open threads would be populated here -->" in threads
+        assert "<!-- Fill in one bullet per open thread:" in threads
         assert "Thread 1" not in threads
         assert "Description 1" not in threads
         assert not [ln for ln in threads.splitlines() if ln.startswith("- ")]
@@ -385,7 +387,8 @@ class TestDossierTemplateAsset:
         template_str = template_str.read_text(encoding="utf-8")
         section_6 = _section(template_str, "## 6. Site list maintenance", "## 7. Coverage")
         assert "They look like hand-entered duplicates and are not part of the plan" in section_6
-        assert "parentheses: ." in section_6
+        assert "names are wrapped in square brackets" in section_6
+        assert "parentheses: ." not in section_6
         assert "Orbital Construction Site:" not in section_6
         assert template_str.count("Orbital Construction Site:") == 1
 
@@ -395,10 +398,56 @@ class TestDossierTemplateAsset:
         template_str = template_str.read_text(encoding="utf-8")
         section_7 = _section(template_str, "## 7. Coverage", "## 8. Writing rules")
         assert "and it mixes announcements," in section_7
-        assert "monologues and multi-character conversations: ." in section_7
-        assert "The  currently report an" in section_7
-        assert "The 0 currently report an" not in section_7
-        assert "for those 0 goes live when each site completes." in section_7
+        assert "monologues and multi-character conversations." in section_7
+        # The broadcast sentence ends in a full stop, not a dangling colon.
+        assert "conversations: ." not in section_7
+        assert "A station still under" in section_7
+        assert "The  currently report an" not in section_7
+        assert "for those 0 goes live" not in section_7
+        assert "station content for a site under construction goes live when it" in section_7
+
+    def test_dossier_template_has_no_references_outside_the_skill(self):
+        """The template is an output template: it may not point at repo files.
+
+        The dossier is copied into a content repository, so a path that only
+        exists in the skill's source repository (``tools/``, ``systems/``
+        housekeeping files) becomes a broken promise the moment it is used.
+        """
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
+        for stale in (
+            "tools/",
+            "systems/DECISIONS.md",
+            "INVENTORY.md",
+            "DECISIONS.md",
+        ):
+            assert stale not in template_str, f"template points at {stale!r}"
+        # The only package paths it names ship with the skill.
+        for path in ("scripts/edcg/rules/data/",):
+            assert path in template_str
+
+    def test_dossier_template_has_no_unfinished_fragments(self):
+        """A lost template expression must not survive as a hole in a sentence.
+
+        These are the exact fragments the repaired template used to carry: a
+        sentence ending ``: .``, a missing subject before a verb, and a count
+        that had no value. Intentional fill-in prompts (``<placeholders>`` and
+        ``<!-- ... -->`` comments) are allowed; a hole in prose is not.
+        """
+        template_str = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "assets" / ASSET
+        template_str = template_str.read_text(encoding="utf-8")
+        for fragment in (
+            "parentheses: .",
+            "conversations: .",
+            "The  currently",
+            "The 0 currently",
+            "those 0 goes live",
+        ):
+            assert fragment not in template_str, f"unfinished fragment {fragment!r}"
+        # A sentence that stops at punctuation-with-a-space is a lost expression.
+        assert not re.search(r"[:;,]\s*\.", template_str)
+        # A double space inside prose is where a deleted expression used to be.
+        assert not re.search(r"[a-z]  [a-z]", template_str)
 
 
 if __name__ == "__main__":

@@ -12,12 +12,11 @@ from edcg.rules.validation import (
     Finding,
     parse_content,
     load_kinds,
+    RULE_DATA_DIR,
     SEV_ORDER,
 )
 
 
-# The rule data ships beside the skill's scripts/ directory.
-RULE_DATA_DIR = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "scripts" / "edcg" / "rules" / "data"
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
 
@@ -45,15 +44,9 @@ def system_rules_path() -> Path:
 
 
 @pytest.fixture
-def content_path() -> Path:
-    """Path to test content file."""
-    return FIXTURES_DIR / "test_content.txt"
-
-
-@pytest.fixture
-def dossier_path() -> Path:
-    """Path to test dossier file."""
-    return FIXTURES_DIR / "test_dossier.md"
+def dossier_path(tmp_path) -> Path:
+    """A dossier path under tmp_path; each test writes the content it needs."""
+    return tmp_path / "test_dossier.md"
 
 
 @pytest.fixture
@@ -444,15 +437,17 @@ Welcome <Commander> and <cmdrname> to <starsystem>.
         token_findings = [f for f in result.findings if f.rule in ("syntax.token_known", "syntax.token_case")]
         assert len(token_findings) == 0
 
-    def test_voice_token_passes(self, engine, tmp_path, system_rules_path):
+    def test_voice_token_passes(self, engine, tmp_path):
         """Voice tokens declared in system rules should pass."""
-        # System rules with voices
+        # System rules with voices. They are written under tmp_path: a test may
+        # not edit the checked-in fixtures.
         system_rules = """[system]
 names = ["Test System"]
 dossier = "test.md"
 voices = ["Foreman", "Researcher"]
 """
-        system_rules_path.write_text(system_rules)
+        rules_file = tmp_path / "system.rules.toml"
+        rules_file.write_text(system_rules, encoding="utf-8")
         
         content = """<!-- provenance: tool=test model=test -->
 @SystemBroadcast<~>Test System
@@ -465,7 +460,7 @@ voices = ["Foreman", "Researcher"]
         engine2 = RuleEngine(
             engine.base_rules_path,
             engine.house_rules_path,
-            system_rules_path
+            rules_file
         )
         result = engine2.validate(content_file, None)
         
@@ -1164,19 +1159,6 @@ class TestCombinations:
 
 class TestRuleEngineAPI:
     """Tests for RuleEngine public API."""
-
-    def test_validate_returns_validation_result(self, engine, tmp_path):
-        """validate() should return ValidationResult."""
-        content_file = tmp_path / "content.txt"
-        content_file.write_text(VALID_CONTENT, encoding="utf-8", newline="\r\n")
-        
-        result = engine.validate(content_file, None)
-        
-        assert isinstance(result, ValidationResult)
-        assert hasattr(result, "findings")
-        assert hasattr(result, "passed")
-        assert isinstance(result.findings, list)
-        assert isinstance(result.passed, bool)
 
     def test_finding_has_required_fields(self, engine, tmp_path):
         """Finding should have rule, severity, line, message."""

@@ -175,10 +175,12 @@ class TestNewSystemInterview:
         assert "[<Port Authority>]" not in text
 
     def test_offer_of_a_feature_branch_is_optional(self):
+        """The interview defers the offer to the spine and keeps the constraint."""
         lowered = _lower(NEW_INTERVIEW)
         assert "branch start" in lowered
         assert "optional" in lowered
         assert "never create a branch without being asked" in lowered
+        assert "workflow-details.md" in _read(NEW_INTERVIEW)
 
     def test_interview_runs_one_phase_at_a_time(self):
         lowered = _lower(NEW_INTERVIEW)
@@ -205,6 +207,13 @@ class TestUpdateInterview:
         ]
         positions = [text.index(f"## {name}") for name in expected]
         assert positions == sorted(positions)
+
+    def test_branch_decision_is_shared_and_early(self):
+        """The update path hears about the branch option before Phase 1."""
+        lowered = _lower(UPDATE_INTERVIEW)
+        assert "branch start" in lowered
+        assert "optional" in lowered
+        assert "workflow-details.md" in _read(UPDATE_INTERVIEW)
 
     def test_phase_1_reviews_the_factual_diff_before_prose(self):
         phase = _phases(_read(UPDATE_INTERVIEW))["PHASE 1: REVIEW FACTUAL CHANGES"]

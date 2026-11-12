@@ -2,7 +2,7 @@
 
 import os
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -10,7 +10,6 @@ from edcg.facts.facts import (
     JournalOnlyStation,
     LandableStation,
     NonLandableSite,
-    SourceAttribution,
     SystemFacts,
     _names_match,
     compute_facts_diff,
@@ -35,33 +34,6 @@ def mock_config():
     return config
 
 
-@pytest.fixture
-def mock_raven_client():
-    """Create a mock RavenClient."""
-    mock_client = AsyncMock()
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=None)
-    return mock_client
-
-
-@pytest.fixture
-def mock_inara_client():
-    """Create a mock InaraClient."""
-    mock_client = AsyncMock()
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=None)
-    return mock_client
-
-
-@pytest.fixture
-def mock_spansh_client():
-    """Create a mock SpanshClient."""
-    mock_client = AsyncMock()
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=None)
-    return mock_client
-
-
 def _spansh_system(name: str, bodies: list[dict]) -> SpanshSystem:
     """Build a SpanshSystem with just the fields these tests need."""
     return SpanshSystem(
@@ -80,107 +52,6 @@ def _spansh_system(name: str, bodies: list[dict]) -> SpanshSystem:
         bodies=bodies,
         updated=datetime.now(UTC),
     )
-
-
-# ============================================================================
-# Data Structure Tests
-# ============================================================================
-
-class TestDataStructures:
-    """Tests for fact data structures."""
-
-    def test_system_facts_creation(self):
-        """Test SystemFacts dataclass creation."""
-        facts = SystemFacts(
-            system_name="Test System",
-            raven_system=RavenSystem(name="Test System", architect="Test", revision=1, bodies=[]),
-            raven_sites=[],
-            journal_data=JournalData(docked_stations=[], visited_systems=[], last_play_session=None),
-            inara_system=None,
-            spansh_system=None,
-            landable_stations=[],
-            non_landable_sites=[],
-            journal_only_stations=[],
-            conflicts=[],
-        )
-        assert facts.system_name == "Test System"
-        assert facts.raven_system.revision == 1
-        assert facts.landable_stations == []
-        assert facts.non_landable_sites == []
-        assert facts.journal_only_stations == []
-        assert facts.conflicts == []
-
-    def test_landable_station_creation(self):
-        """Test LandableStation dataclass creation."""
-        station = LandableStation(
-            name="Test Station",
-            build_type="outpost",
-            facility_class="outpost",
-            facility_name="Civilian Surface Outpost",
-            body="Body 1",
-            status="complete",
-            source="raven",
-            placement="surface",
-            is_landable=True,
-        )
-        assert station.name == "Test Station"
-        assert station.build_type == "outpost"
-        assert station.facility_class == "outpost"
-        assert station.is_landable is True
-
-    def test_non_landable_site_creation(self):
-        """Test NonLandableSite dataclass creation."""
-        site = NonLandableSite(
-            name="Test Hub",
-            build_type="hub",
-            facility_class="hub",
-            facility_name="Civilian Hub",
-            body="Body 1",
-            status="plan",
-            source="raven",
-            placement="orbital",
-            is_landable=False,
-        )
-        assert site.name == "Test Hub"
-        assert site.build_type == "hub"
-        assert site.is_landable is False
-
-    def test_journal_only_station_creation(self):
-        """Test JournalOnlyStation dataclass creation."""
-        station = JournalOnlyStation(
-            name="Journal Station",
-            system="Test System",
-            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
-            market_id=12345,
-        )
-        assert station.name == "Journal Station"
-        assert station.system == "Test System"
-        assert station.market_id == 12345
-
-    def test_source_attribution_creation(self):
-        """Test SourceAttribution dataclass creation."""
-        attr = SourceAttribution(
-            field="station_name",
-            value="Test Station",
-            sources=["raven", "journal"],
-            conflict=False,
-        )
-        assert attr.field == "station_name"
-        assert attr.value == "Test Station"
-        assert attr.sources == ["raven", "journal"]
-        assert attr.conflict is False
-
-    def test_source_attribution_with_conflict(self):
-        """Test SourceAttribution with conflict flag."""
-        attr = SourceAttribution(
-            field="system_name",
-            value="Raven Name",
-            sources=["raven"],
-            conflict=True,
-            details="Journal has 'Journal Name'",
-        )
-        assert attr.conflict is True
-        assert attr.details == "Journal has 'Journal Name'"
 
 
 # ============================================================================

@@ -5,10 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from edcg.rules.validation import validate_content
+from edcg.rules.validation import RULE_DATA_DIR, validate_content
 
-# The rule data ships beside the engine as package data.
-RULE_DATA_DIR = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "scripts" / "edcg" / "rules" / "data"
 BASE_RULES = RULE_DATA_DIR / "base.toml"
 SYSTEM = "Test System"
 STATION = "Test Station (ii-42)"

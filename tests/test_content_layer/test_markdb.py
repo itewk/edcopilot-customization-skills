@@ -5,26 +5,10 @@ config is supplied through the environment (the content layer resolves roots
 lazily per call). No gate/pause case existed in the old suite.
 """
 
-import shutil
-import subprocess
-import tempfile
-from pathlib import Path
-
 import pytest
 
 from edcg.content.markdb import markdb_add, markdb_remove
-
-
-def _git(repo: Path, *args: str) -> str:
-    result = subprocess.run(
-        ["git", *args],
-        cwd=repo,
-        check=True,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
-    return result.stdout
+from support import run_git as _git
 
 
 # ============================================================
@@ -71,63 +55,27 @@ This station was built by Raven Colonial.
 
 
 @pytest.fixture
-def temp_edcopilot_root():
-    """Create a temporary git repo for EDCoPilot root."""
-    tmpdir = tempfile.mkdtemp()
-    repo_path = Path(tmpdir) / "edcopilot_root"
-    repo_path.mkdir(parents=True)
-
-    # Initialize git repo
-    subprocess.run(["git", "init"], cwd=repo_path, check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_path, check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_path, capture_output=True)
-
-    # Create initial commit so repo has HEAD
-    readme = repo_path / "README.md"
-    readme.write_text("# Test EDCoPilot Root")
-    subprocess.run(["git", "add", "README.md"], cwd=repo_path, check=True, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=repo_path, check=True, capture_output=True)
-
-    # Create the target file with sample content
+def temp_edcopilot_root(git_repo):
+    """A committed EDCoPilot root whose custom file holds sample content."""
+    repo_path = git_repo(files={"README.md": "# Test EDCoPilot Root"})
     custom_file = repo_path / "EDCoPilot.SpeechExtensions.Custom.txt"
     custom_file.write_text(SAMPLE_CUSTOM_CONTENT, encoding="utf-8", newline="\r\n")
-    subprocess.run(["git", "add", "EDCoPilot.SpeechExtensions.Custom.txt"], cwd=repo_path, check=True, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "Initial content"], cwd=repo_path, check=True, capture_output=True)
-
-    yield repo_path
-
-    # Cleanup
-    shutil.rmtree(tmpdir, ignore_errors=True)
+    _git(repo_path, "add", "-A")
+    _git(repo_path, "commit", "-m", "Initial content")
+    return repo_path
 
 
 @pytest.fixture
-def temp_edcopilot_root_with_markers():
-    """Create a temporary git repo for EDCoPilot root with UPDATEDB markers already present."""
-    tmpdir = tempfile.mkdtemp()
-    repo_path = Path(tmpdir) / "edcopilot_root"
-    repo_path.mkdir(parents=True)
-
-    # Initialize git repo
-    subprocess.run(["git", "init"], cwd=repo_path, check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_path, check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_path, capture_output=True)
-
-    # Create initial commit so repo has HEAD
-    readme = repo_path / "README.md"
-    readme.write_text("# Test EDCoPilot Root")
-    subprocess.run(["git", "add", "README.md"], cwd=repo_path, check=True, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=repo_path, check=True, capture_output=True)
-
-    # Create the target file with sample content WITH markers
+def temp_edcopilot_root_with_markers(git_repo):
+    """As ``temp_edcopilot_root``, with UPDATEDB markers already present."""
+    repo_path = git_repo(files={"README.md": "# Test EDCoPilot Root"})
     custom_file = repo_path / "EDCoPilot.SpeechExtensions.Custom.txt"
-    custom_file.write_text(SAMPLE_CUSTOM_CONTENT_WITH_UPDATEDB, encoding="utf-8", newline="\r\n")
-    subprocess.run(["git", "add", "EDCoPilot.SpeechExtensions.Custom.txt"], cwd=repo_path, check=True, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "Initial content with markers"], cwd=repo_path, check=True, capture_output=True)
-
-    yield repo_path
-
-    # Cleanup
-    shutil.rmtree(tmpdir, ignore_errors=True)
+    custom_file.write_text(
+        SAMPLE_CUSTOM_CONTENT_WITH_UPDATEDB, encoding="utf-8", newline="\r\n"
+    )
+    _git(repo_path, "add", "-A")
+    _git(repo_path, "commit", "-m", "Initial content with markers")
+    return repo_path
 
 
 @pytest.fixture

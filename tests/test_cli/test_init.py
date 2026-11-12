@@ -3,30 +3,22 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 
 import pytest
 
 from edcg import cli
+from support import run_git as _git
 
 
 @pytest.fixture(autouse=True)
-def clean_env(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("EDCG_CONTENT_DEFINITIONS_ROOT", raising=False)
-    monkeypatch.delenv("EDCG_EDCOPILOT_ROOT", raising=False)
-    return tmp_path
+def _isolated(clean_env):
+    """Apply the shared environment isolation to every test in this module."""
+    return clean_env
 
 
 def _json(capsys):
     return json.loads(capsys.readouterr().out)
-
-
-def _git(root, *args):
-    return subprocess.run(
-        ["git", *args], cwd=root, capture_output=True, text=True, check=True
-    ).stdout
 
 
 def test_init_scaffolds_a_blank_root_without_git(tmp_path, capsys):

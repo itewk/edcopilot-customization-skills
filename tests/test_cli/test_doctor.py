@@ -14,14 +14,13 @@ from edcg.cli import _git_binary as real_git_binary
 
 
 @pytest.fixture(autouse=True)
-def clean_env(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("EDCG_CONTENT_DEFINITIONS_ROOT", raising=False)
-    monkeypatch.delenv("EDCG_EDCOPILOT_ROOT", raising=False)
-    # Journal discovery must not read the real machine: clear the override and
-    # point Path.home at an empty directory. Tests that need a journal opt in by
-    # setting EDCG_JOURNAL_DIR themselves.
-    monkeypatch.delenv("EDCG_JOURNAL_DIR", raising=False)
+def _doctor_environment(clean_env, monkeypatch, tmp_path):
+    """Isolate a doctor test and patch its two impure probes.
+
+    The shared isolation clears the configured roots and the journal override
+    and moves to an empty working directory; the probes below are what makes a
+    doctor run independent of this machine.
+    """
     empty_home = tmp_path / "empty-home"
     empty_home.mkdir()
     monkeypatch.setattr(cli.Path, "home", lambda: empty_home)
@@ -30,7 +29,7 @@ def clean_env(monkeypatch, tmp_path):
     monkeypatch.setattr(
         cli, "_git_identity", lambda: ("Test User", "test@example.com")
     )
-    return tmp_path
+    return clean_env
 
 
 def _lines(capsys):

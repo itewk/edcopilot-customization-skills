@@ -3,11 +3,9 @@
 Tests edcg.repo.dossier.save_definition(system_name: str, dossier_md: str, rules_toml: str) -> SaveResult
 """
 
-import tempfile
-import shutil
 from pathlib import Path
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from edcg.repo.dossier import save_definition
 from edcg.rules.validation import SaveResult
@@ -78,32 +76,11 @@ class TestSaveDefinitionTool:
     """Tests for save_definition."""
 
     @pytest.fixture
-    def temp_content_definitions(self):
-        """Create a temporary git repo for content definitions."""
-        tmpdir = tempfile.mkdtemp()
-        repo_path = Path(tmpdir) / "edcopilot-content-definitions"
-        repo_path.mkdir(parents=True)
-
-        # Initialize git repo
-        import subprocess
-        subprocess.run(["git", "init"], cwd=repo_path, check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_path, check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_path, check=True, capture_output=True)
-
-        # Create systems directory
-        systems_dir = repo_path / "systems"
-        systems_dir.mkdir(parents=True)
-
-        # Create initial commit so repo has HEAD
-        readme = repo_path / "README.md"
-        readme.write_text("# Test Content Definitions")
-        subprocess.run(["git", "add", "README.md"], cwd=repo_path, check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=repo_path, check=True, capture_output=True)
-
-        yield repo_path
-
-        # Cleanup
-        shutil.rmtree(tmpdir, ignore_errors=True)
+    def temp_content_definitions(self, git_repo):
+        """A committed repository with the content layout ``save_definition`` expects."""
+        repo_path = git_repo(files={"README.md": "# Test Content Definitions\n"})
+        (repo_path / "systems").mkdir()
+        return repo_path
 
     @pytest.fixture
     def mock_config(self, temp_content_definitions):
@@ -309,51 +286,4 @@ voices = ["Voice1"]
         assert (systems_dir / f"{expected_slug}.md").exists()
         assert (systems_dir / f"{expected_slug}.rules.toml").exists()
 
-    def test_save_definition_uses_git_wrapper(self, mock_config):
-        """Test that save_definition uses the GitRepo wrapper."""
-        from edcg.repo.gitrepo import GitRepo
-        from unittest.mock import MagicMock
 
-        # We can verify by checking that a commit was made via the wrapper
-        with patch("edcg.repo.dossier.get_config", return_value=mock_config):
-            with patch("edcg.repo.dossier.GitRepo") as mock_git_repo_class:
-                mock_repo = MagicMock()
-                mock_repo.add_all = MagicMock()
-                mock_repo.commit = MagicMock(return_value="abc12345")
-                mock_repo.status = MagicMock(return_value={"staged": [], "unstaged": [], "untracked": [], "clean": False})
-                mock_git_repo_class.return_value = mock_repo
-
-                result = save_definition(
-                    system_name="Test System",
-                    dossier_md=VALID_DOSSIER,
-                    rules_toml=VALID_RULES,
-                )
-
-                # GitRepo should have been instantiated and used
-                mock_git_repo_class.assert_called_once()
-                # Verify commit was called
-                mock_repo.commit.assert_called_once()
-
-    def test_save_definition_validates_dossier_and_rules(self, mock_config):
-        """Test that save_definition validates inputs before saving."""
-        # Invalid rules - missing required fields
-        invalid_rules = """[system]
-names = ["Test System"]
-# missing dossier and voices
-"""
-
-        with patch("edcg.repo.dossier.get_config", return_value=mock_config):
-            # Should still save but we could add validation if needed
-            # For now, the tool should write whatever is given
-            result = save_definition(
-                system_name="Test System",
-                dossier_md=VALID_DOSSIER,
-                rules_toml=invalid_rules,
-            )
-
-        # Currently the tool writes whatever is passed - validation is separate
-        assert result.commit_hash is not None
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

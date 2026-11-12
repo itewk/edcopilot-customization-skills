@@ -16,27 +16,15 @@ from pathlib import Path
 
 from edcg import cli
 from edcg.repo.gitrepo import GitRepo
+from support import init_repo, run_git as _git
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "skills" / "edcopilot-system-content" / "scripts" / "edcg.py"
 
 
-def _git(repo: Path, *args: str) -> str:
-    result = subprocess.run(
-        ["git", *args],
-        cwd=repo,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return result.stdout
-
-
 def _init_repo(root: Path) -> None:
-    root.mkdir(parents=True, exist_ok=True)
-    GitRepo.init(root).close()
-    _git(root, "config", "user.name", "E2E Test")
-    _git(root, "config", "user.email", "e2e@example.com")
+    """A repository with an identity but no commit yet."""
+    init_repo(root)
 
 
 def _environment(tmp_path: Path) -> tuple[Path, Path, dict]:
