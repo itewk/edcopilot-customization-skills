@@ -1,5 +1,6 @@
 """Per-section content bounds: defaults, overrides, and enforcement."""
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -151,3 +152,65 @@ def test_unknown_station_override_warns(tmp_path):
     assert len(findings) == 1
     assert findings[0].severity == "warn"
     assert "Ghost Station" in findings[0].message
+
+
+def test_unknown_bounds_kind_warns(tmp_path):
+    """A bounds key naming no tag kind can never match: warn, not silence."""
+    systems = _system_rules(tmp_path, "[content.bounds]\nNotAKind = [1, 2]")
+
+    findings = _bounds(_document(_tag("SystemGreeting", 3)), systems)
+
+    assert len(findings) == 1
+    assert findings[0].severity == "warn"
+    assert "NotAKind" in findings[0].message
+    # The author is told which spellings the key could have meant.
+    assert "SystemGreeting" in findings[0].message
+
+
+def test_unknown_bounds_station_kind_warns(tmp_path):
+    """A station sub-key naming no tag kind names both station and key."""
+    systems = _system_rules(
+        tmp_path,
+        f'[content.bounds.stations."{STATION}"]\nAlsoNotAKind = [1, 2]',
+    )
+
+    findings = _bounds(_document(_tag("StationChatter", 6)), systems)
+
+    assert len(findings) == 1
+    assert findings[0].severity == "warn"
+    assert STATION in findings[0].message
+    assert "AlsoNotAKind" in findings[0].message
+    assert "StationChatter" in findings[0].message
+
+
+def test_known_bounds_produce_no_unknown_kind_warning(tmp_path):
+    """A real kind in [content.bounds] is a valid override, not an unknown key."""
+    systems = _system_rules(tmp_path, "[content.bounds]\nSystemGreeting = [4, 8]")
+
+    findings = _bounds(_document(_tag("SystemGreeting", 5)), systems)
+
+    assert findings == []
+
+
+def test_unknown_base_bounds_kind_warns(tmp_path):
+    """The base [content.bounds] is checked too: a bogus key there is inert."""
+    data = tmp_path / "data"
+    shutil.copytree(RULE_DATA_DIR, data)
+    base_toml = data / "base.toml"
+    text = base_toml.read_text(encoding="utf-8")
+    assert "[content.bounds]\n" in text
+    base_toml.write_text(
+        text.replace("[content.bounds]\n", "[content.bounds]\nNotAKind = [1, 2]\n", 1),
+        encoding="utf-8",
+    )
+    systems = _system_rules(tmp_path, "[content.bounds]\nSystemGreeting = [3, 6]")
+
+    result = validate_content(
+        _document(_tag("SystemGreeting", 3)), SYSTEM,
+        base_rules_path=data / "base.toml", systems_dir=systems,
+    )
+    findings = [f for f in result.findings if f.rule == "content.bounds"]
+
+    assert len(findings) == 1
+    assert findings[0].severity == "warn"
+    assert "NotAKind" in findings[0].message

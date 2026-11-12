@@ -884,6 +884,22 @@ def rule_content_bounds(ctx: Context) -> None:
     base_kinds, _ = _resolved_bounds(ctx, None)
     seen_stations: set[str] = set()
 
+    # A bounds key that names no tag kind can never match, so the override is
+    # silently inert. The known kinds come from the base config alone: a typo in
+    # one system's bounds must still be reported in that system, so another
+    # system's keys must never make it look known.
+    known_kinds = set(ctx.base.get("kinds", {}))
+    known_list = ", ".join(sorted(known_kinds))
+
+    # The base's own bounds are the same trap one level up: a key there that
+    # names no kind changes nothing.
+    for key in ctx.base.get("content", {}).get("bounds", {}):
+        if key != "stations" and key not in known_kinds:
+            ctx.add(
+                "content.bounds", "warn", None,
+                f"base bounds key {key!r} does not match any known tag kind ({known_list})",
+            )
+
     for tag in ctx.content.authored_tags():
         if tag.station:
             seen_stations.add(tag.station)
@@ -918,12 +934,31 @@ def rule_content_bounds(ctx: Context) -> None:
     # A station named in the bounds with no content behind it is a rename or a
     # typo; silence would leave the override doing nothing at all.
     for system, system_cfg in ctx.per_system.items():
-        for station in system_cfg.get("content", {}).get("bounds", {}).get("stations", {}):
+        bounds = system_cfg.get("content", {}).get("bounds", {})
+        for station in bounds.get("stations", {}):
             if station not in seen_stations:
                 ctx.add(
                     "content.bounds", "warn", None,
                     f"bounds name station {station!r}, which has no content for {system}",
                 )
+
+        # A bounds key that names no tag kind is just as inert.
+        for key in bounds:
+            if key != "stations" and key not in known_kinds:
+                ctx.add(
+                    "content.bounds", "warn", None,
+                    f"bounds key {key!r} does not match any known tag kind ({known_list})",
+                )
+
+        # ... and the same is true of a station's kind sub-keys.
+        for station, kind_cfg in bounds.get("stations", {}).items():
+            for kind_key in kind_cfg:
+                if kind_key not in known_kinds:
+                    ctx.add(
+                        "content.bounds", "warn", None,
+                        f"bounds key {kind_key!r} for station {station!r} does not "
+                        f"match any known tag kind ({known_list})",
+                    )
 
 
 def _tag_block_range(lines: list[str], tag_index: int) -> tuple[int, int]:

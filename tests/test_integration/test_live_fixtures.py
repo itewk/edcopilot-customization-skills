@@ -279,7 +279,8 @@ def test_live_systems_rules_toml_loading(
     ``validate_content`` takes and the only one that resolves every declared
     dossier. Each system's ``[content.bounds]`` keys are then checked against the
     tag kinds: a bound naming no kind can never match, so it is reported as an
-    inert override.
+    inert override, and ``validate_content`` must warn about it in a finding the
+    caller can assert on.
     """
     base = load_base_config(RULE_DATA_DIR)
     base_rules = base["rules"]
@@ -328,6 +329,27 @@ def test_live_systems_rules_toml_loading(
         inert = sorted(declared - known_kinds)
         if inert:
             rows.append(f"{name}: inert bound key(s) {inert} - no tag kind has these names")
+            # The validator must say the same thing in a finding a caller can
+            # assert on, not only in this test's own print. Empty content: no
+            # tag of any kind is authored, so only the bounds keys can speak.
+            result = validate_content("", name, systems_dir=live_systems_dir)
+            _assert_findings_well_formed(result, f"{name} (empty content)")
+            warned = {
+                key
+                for key in inert
+                if any(
+                    finding.rule == "content.bounds"
+                    and finding.severity == "warn"
+                    and repr(key) in finding.message
+                    for finding in result.findings
+                )
+            }
+            assert warned == set(inert), (
+                f"{name}: validate_content did not warn about the inert bound "
+                f"key(s) {sorted(set(inert) - warned)}; it reported "
+                f"{[(f.rule, f.message) for f in result.findings if f.rule == 'content.bounds']}"
+            )
+            rows.append(f"{name}: validate_content warned about {len(warned)} inert key(s)")
         else:
             rows.append(f"{name}: {len(declared)} bound key(s), every one a tag kind")
 
