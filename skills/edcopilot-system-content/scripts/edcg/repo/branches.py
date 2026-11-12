@@ -21,18 +21,6 @@ from edcg.common.layout import CUSTOM_FILE_NAME
 from edcg.repo.gitrepo import GitRepo
 
 
-# ---------------------------------------------------------------------------
-# Branch state mirrors the repositories
-# ---------------------------------------------------------------------------
-# The repositories are the state: the active branch is whichever branch the
-# content repo is checked out on (when it is not the default branch) and the
-# runtime repo agrees with. ``_active_branch`` remains only as a compatibility
-# mirror for callers that read the module attribute; it is never consulted to
-# decide status, finalize, abort or review.
-_active_branch: str | None = None
-_branch_systems: set[str] = set()
-
-
 # Only branches this workflow creates are workflow branches. ``slugify_branch_name``
 # emits ``gen/<slug>`` and appends ``-YYYYMMDDTHHMMSSZ`` on a collision. Any other
 # non-default checkout (a human's ``release`` branch, for example) is foreign.
@@ -99,39 +87,18 @@ def _is_repo(root) -> bool:
     return root is not None and GitRepo.is_repo(root)
 
 
-def _default_branch_for(repo: GitRepo) -> str:
-    """Best-effort default branch detection that prefers branches that exist."""
-    try:
-        branches = repo.list_branches()
-    except Exception:
-        branches = []
-    if "main" in branches:
-        return "main"
-    if "master" in branches:
-        return "master"
-    try:
-        db = repo.default_branch()
-    except Exception:
-        db = "main"
-    if db in branches:
-        return db
-    if branches:
-        return branches[0]
-    return db or "main"
-
-
 def _branch_state(
     config, runtime_root: Optional[Path] = None
-) -> tuple[Optional[str], str, str]:
+) -> tuple[Optional[str], str, str, str]:
     """Derive the active branch from the two repositories.
 
-    The active branch is the content repository's current branch when it is a
-    workflow branch (``gen/...``), not that repository's default branch, and
-    (when the runtime root is a git repository) the runtime repository is on
-    the same branch. A foreign non-default checkout is reported through
-    ``content_current_branch`` but is never treated as the active workflow
-    branch. Returns
-    ``(active_branch, content_current_branch, runtime_current_branch)``.
+    The repositories are the state: the active branch is the content
+    repository's current branch when it is a workflow branch (``gen/...``), not
+    that repository's default branch, and (when the runtime root is a git
+    repository) the runtime repository is on the same branch. A foreign
+    non-default checkout is reported through ``content_current_branch`` but is
+    never treated as the active workflow branch. Returns ``(active_branch,
+    content_current_branch, runtime_current_branch, content_default_branch)``.
     """
     content_root = config.content_definitions_root
     if runtime_root is None:
@@ -140,21 +107,15 @@ def _branch_state(
     content_branch = ""
     content_default = ""
     if _is_repo(content_root):
-        repo = GitRepo(content_root)
-        try:
+        with GitRepo(content_root) as repo:
             content_branch = repo.current_branch()
-            content_default = _default_branch_for(repo)
-        finally:
-            repo.close()
+            content_default = repo.default_branch()
 
     runtime_branch = ""
     runtime_is_git = _is_repo(runtime_root)
     if runtime_is_git:
-        repo = GitRepo(runtime_root)
-        try:
+        with GitRepo(runtime_root) as repo:
             runtime_branch = repo.current_branch()
-        finally:
-            repo.close()
 
     active: Optional[str] = None
     if (
@@ -163,7 +124,7 @@ def _branch_state(
         and (not runtime_is_git or runtime_branch == content_branch)
     ):
         active = content_branch
-    return active, content_branch, runtime_branch
+    return active, content_branch, runtime_branch, content_default
 
 
 def _foreign_checkout(content_branch: str, content_default: str) -> bool:
@@ -176,45 +137,13 @@ def _foreign_checkout(content_branch: str, content_default: str) -> bool:
     )
 
 
-def _default_branch_of(root) -> str:
-    """The default branch of ``root``, or ``""`` when it is not a repository."""
-    if not _is_repo(root):
-        return ""
-    repo = GitRepo(root)
-    try:
-        return _default_branch_for(repo)
-    finally:
-        repo.close()
-
-
 @dataclass
 class BranchResult:
     branch_name: str
     repos_branched: list[str] = field(default_factory=list)
     backup_path: Optional[Path] = None
-    # Convenience booleans / aliases for compatibility
-    branch: Optional[str] = None
-    name: Optional[str] = None
-    repos: Optional[list[str]] = None
-    backup: Optional[Path] = None
-    content_branched: bool = False
-    runtime_branched: bool = False
     warnings: list[str] = field(default_factory=list)
     message: Optional[str] = None
-
-    def __post_init__(self):
-        if self.branch is None:
-            self.branch = self.branch_name
-        if self.name is None:
-            self.name = self.branch_name
-        if self.repos is None:
-            self.repos = list(self.repos_branched)
-        if self.backup is None:
-            self.backup = self.backup_path
-        if "content" in self.repos_branched or "content_definitions" in self.repos_branched:
-            self.content_branched = True
-        if "runtime" in self.repos_branched or "edcopilot" in self.repos_branched:
-            self.runtime_branched = True
 
 
 @dataclass
@@ -222,42 +151,21 @@ class BranchStatus:
     active_branch: Optional[str] = None
     content_current_branch: str = ""
     runtime_current_branch: str = ""
-    # aliases
-    active_branch_name: Optional[str] = None
-    content_branch: str = ""
-    runtime_branch: str = ""
-    content_branch_name: str = ""
-    runtime_branch_name: str = ""
     content_status: dict = field(default_factory=dict)
     runtime_status: dict = field(default_factory=dict)
     uncommitted_changes: dict = field(default_factory=dict)
-    uncommitted: dict = field(default_factory=dict)
     content_uncommitted: bool = False
     runtime_uncommitted: bool = False
     has_uncommitted_changes: bool = False
     # True when the content repo is on a non-default branch the workflow did
     # not generate (for example a human's ``release`` checkout).
     foreign_checkout: bool = False
-    systems_affected: list[str] = field(default_factory=list)
-    affected_systems: list[str] = field(default_factory=list)
-    systems: list[str] = field(default_factory=list)
-
-    def __post_init__(self):
-        if self.active_branch_name is None:
-            self.active_branch_name = self.active_branch
-        self.content_branch = self.content_current_branch
-        self.runtime_branch = self.runtime_current_branch
-        self.content_branch_name = self.content_current_branch
-        self.runtime_branch_name = self.runtime_current_branch
-        self.uncommitted = dict(self.uncommitted_changes)
-        self.affected_systems = list(self.systems_affected)
-        self.systems = list(self.systems_affected)
 
 
 @dataclass
 class FinalizeResult:
     merged: bool = False
-    merge_commits: list[str] = field(default_factory=list)
+    merge_commits: list[Optional[str]] = field(default_factory=list)
     content_merge_commit: Optional[str] = None
     runtime_merge_commit: Optional[str] = None
     merge_errors: list[str] = field(default_factory=list)
@@ -265,18 +173,6 @@ class FinalizeResult:
     pushed: bool = False
     push_status: str = "not_pushed"
     message: Optional[str] = None
-    # aliases
-    commits: Optional[list[str]] = None
-    content_commit: Optional[str] = None
-    runtime_commit: Optional[str] = None
-
-    def __post_init__(self):
-        if self.commits is None:
-            self.commits = list(self.merge_commits)
-        if self.content_commit is None:
-            self.content_commit = self.content_merge_commit
-        if self.runtime_commit is None:
-            self.runtime_commit = self.runtime_merge_commit
 
 
 @dataclass
@@ -289,15 +185,6 @@ class AbortResult:
     runtime_discarded: bool = False
     confirmed: bool = False
     message: Optional[str] = None
-    # aliases
-    branch: Optional[str] = None
-    discarded_items: Optional[list] = None
-
-    def __post_init__(self):
-        if self.branch is None:
-            self.branch = self.discarded_branch
-        if self.discarded_items is None:
-            self.discarded_items = list(self.would_discard) if not self.confirmed else list(self.discarded)
 
 
 def start_branch(description: Optional[str] = None) -> BranchResult:
@@ -309,8 +196,6 @@ def start_branch(description: Optional[str] = None) -> BranchResult:
     root is not a git repository, a timestamped backup copy of the custom file
     is created instead.
     """
-    global _active_branch, _branch_systems
-
     config = get_config()
     from edcg.repo.gitrepo import slugify_branch_name
 
@@ -326,20 +211,16 @@ def start_branch(description: Optional[str] = None) -> BranchResult:
     runtime_root = resolve_runtime_root(config)
     for root in (content_root, runtime_root):
         if _is_repo(root):
-            r = GitRepo(root)
-            try:
-                existing_branches.update(r.list_branches())
-            finally:
-                r.close()
+            with GitRepo(root) as repo:
+                existing_branches.update(repo.list_branches())
     if branch_name in existing_branches:
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         branch_name = f"{branch_name}-{ts}"
 
     # Content repo (always expected to be a repo)
     if _is_repo(content_root):
-        repo = GitRepo(content_root)
-        try:
-            default = _default_branch_for(repo)
+        with GitRepo(content_root) as repo:
+            default = repo.default_branch()
             if default and default in repo.list_branches():
                 repo.checkout(default)
             # warn if dirty
@@ -352,8 +233,6 @@ def start_branch(description: Optional[str] = None) -> BranchResult:
             created = repo.create_branch(branch_name)
             if created is not None:
                 repos_branched.append("content")
-        finally:
-            repo.close()
     else:
         warnings.warn(
             f"Content definitions root is not a git repository: {content_root}",
@@ -363,9 +242,8 @@ def start_branch(description: Optional[str] = None) -> BranchResult:
 
     # Runtime root
     if _is_repo(runtime_root):
-        repo = GitRepo(runtime_root)
-        try:
-            default = _default_branch_for(repo)
+        with GitRepo(runtime_root) as repo:
+            default = repo.default_branch()
             if default and default in repo.list_branches():
                 repo.checkout(default)
             try:
@@ -377,8 +255,6 @@ def start_branch(description: Optional[str] = None) -> BranchResult:
             created = repo.create_branch(branch_name)
             if created is not None:
                 repos_branched.append("runtime")
-        finally:
-            repo.close()
     else:
         warnings.warn(
             f"EDCoPilot root is not a git repository; creating backup copy: {runtime_root}",
@@ -401,10 +277,6 @@ def start_branch(description: Optional[str] = None) -> BranchResult:
             except Exception as exc:  # pragma: no cover - defensive
                 warnings_list.append(f"backup failed: {exc}")
 
-    # Compatibility mirror only: the checkout above is the real state.
-    _active_branch = branch_name
-    _branch_systems = set()
-
     return BranchResult(
         branch_name=branch_name,
         repos_branched=repos_branched,
@@ -415,32 +287,24 @@ def start_branch(description: Optional[str] = None) -> BranchResult:
 
 def branch_status() -> BranchStatus:
     """Return the current branch orchestration status."""
-    global _active_branch, _branch_systems
-
     config = get_config()
 
     content_root = config.content_definitions_root
     runtime_root = resolve_runtime_root(config)
 
-    active_branch, content_branch, runtime_branch = _branch_state(
+    active_branch, content_branch, runtime_branch, content_default = _branch_state(
         config, runtime_root
     )
     content_status: dict = {"staged": [], "unstaged": [], "untracked": [], "clean": True}
     runtime_status: dict = {"staged": [], "unstaged": [], "untracked": [], "clean": True}
 
     if _is_repo(content_root):
-        repo = GitRepo(content_root)
-        try:
+        with GitRepo(content_root) as repo:
             content_status = repo.status()
-        finally:
-            repo.close()
 
     if _is_repo(runtime_root):
-        repo = GitRepo(runtime_root)
-        try:
+        with GitRepo(runtime_root) as repo:
             runtime_status = repo.status()
-        finally:
-            repo.close()
 
     content_uncommitted = not bool(content_status.get("clean", True))
     runtime_uncommitted = not bool(runtime_status.get("clean", True))
@@ -459,10 +323,7 @@ def branch_status() -> BranchStatus:
         content_uncommitted=content_uncommitted,
         runtime_uncommitted=runtime_uncommitted,
         has_uncommitted_changes=has_uncommitted,
-        foreign_checkout=_foreign_checkout(
-            content_branch, _default_branch_of(content_root)
-        ),
-        systems_affected=sorted(_branch_systems),
+        foreign_checkout=_foreign_checkout(content_branch, content_default),
     )
 
 
@@ -473,11 +334,9 @@ def finalize_branch(merge: bool = True, push: bool = False) -> FinalizeResult:
     branch of each repository and optionally pushes. With merge=False, the
     session stays on the feature branch for further editing.
     """
-    global _active_branch, _branch_systems
-
     config = get_config()
     runtime_root = resolve_runtime_root(config)
-    # The repositories are the state; the process mirror is never consulted.
+    # The repositories are the state; there is no process mirror to consult.
     branch = _branch_state(config, runtime_root)[0]
 
     if not merge:
@@ -485,12 +344,9 @@ def finalize_branch(merge: bool = True, push: bool = False) -> FinalizeResult:
         if branch:
             for root in (config.content_definitions_root, runtime_root):
                 if _is_repo(root):
-                    repo = GitRepo(root)
-                    try:
+                    with GitRepo(root) as repo:
                         if branch in repo.list_branches():
                             repo.checkout(branch)
-                    finally:
-                        repo.close()
         return FinalizeResult(
             merged=False,
             merge_commits=[],
@@ -513,36 +369,42 @@ def finalize_branch(merge: bool = True, push: bool = False) -> FinalizeResult:
     push_attempted: list[str] = []
     push_succeeded: list[str] = []
 
-    for root, flag_name in ((config.content_definitions_root, "content"), (runtime_root, "runtime")):
+    for root, flag_name in (
+        (config.content_definitions_root, "content"),
+        (runtime_root, "runtime"),
+    ):
         if not _is_repo(root) or not branch:
             continue
 
-        repo = GitRepo(root)
-        try:
-            default = _default_branch_for(repo)
+        with GitRepo(root) as repo:
+            default = repo.default_branch()
             if default and default in repo.list_branches():
                 # land on the default branch, then merge the feature into it
-                if branch in repo.list_branches():
-                    if default != branch:
-                        repo.checkout(default)
+                if branch in repo.list_branches() and default != branch:
+                    repo.checkout(default)
 
                 # merge into default branch
                 try:
                     if not repo.status().get("clean", True):
-                        warnings.warn(f"Uncommitted changes in {root} before merge", UserWarning)
+                        warnings.warn(
+                            f"Uncommitted changes in {root} before merge", UserWarning
+                        )
                     if default != branch:
-                        repo._repo.git.merge(branch)
-                        merged = True
-                        commit_hash = repo._repo.head.commit.hexsha[:8]
-                        if flag_name == "content":
-                            content_commit = commit_hash
+                        merge_commit = repo.merge(branch)
+                        if merge_commit is None:
+                            repo.abort_merge()
+                            merge_errors.append(
+                                f"{flag_name}: merge of {branch} into {default} failed"
+                            )
+                            failed_repos.append(flag_name)
                         else:
-                            runtime_commit = commit_hash
+                            merged = True
+                            if flag_name == "content":
+                                content_commit = merge_commit
+                            else:
+                                runtime_commit = merge_commit
                 except Exception as exc:
-                    try:
-                        repo._repo.git.merge("--abort")
-                    except Exception:
-                        pass
+                    repo.abort_merge()
                     merge_errors.append(f"{flag_name}: {exc}")
                     failed_repos.append(flag_name)
 
@@ -551,11 +413,6 @@ def finalize_branch(merge: bool = True, push: bool = False) -> FinalizeResult:
                     push_attempted.append(flag_name)
                     if repo.push("origin"):
                         push_succeeded.append(flag_name)
-        finally:
-            repo.close()
-
-    _active_branch = None
-    _branch_systems = set()
 
     if not push_requested:
         push_status = "not_pushed"
@@ -580,7 +437,9 @@ def finalize_branch(merge: bool = True, push: bool = False) -> FinalizeResult:
         failed_repos=failed_repos,
         pushed=pushed,
         push_status=push_status,
-        message="merged feature branch" if merged else "no active branch or no merge performed",
+        message="merged feature branch"
+        if merged
+        else "no active branch or no merge performed",
     )
 
 
@@ -591,11 +450,9 @@ def abort_branch(confirm: bool = False) -> AbortResult:
     making changes. With confirm=True, deletes the branch in both repos and
     returns to the default branch.
     """
-    global _active_branch, _branch_systems
-
     config = get_config()
     runtime_root = resolve_runtime_root(config)
-    # The repositories are the state; the process mirror is never consulted.
+    # The repositories are the state; there is no process mirror to consult.
     branch = _branch_state(config, runtime_root)[0]
 
     # Determine what would be discarded (commits on branch not on default)
@@ -604,20 +461,10 @@ def abort_branch(confirm: bool = False) -> AbortResult:
         for root in (config.content_definitions_root, runtime_root):
             if not _is_repo(root):
                 continue
-            repo = GitRepo(root)
-            try:
-                default = _default_branch_for(repo)
+            with GitRepo(root) as repo:
+                default = repo.default_branch()
                 if branch in repo.list_branches():
-                    rrepo = getattr(repo, "_repo", None)
-                    if rrepo is not None and hasattr(rrepo, "iter_commits"):
-                        try:
-                            commits = list(rrepo.iter_commits(f"{default}..{branch}"))
-                            for c in commits:
-                                would_discard.append(getattr(c, "summary", str(c)))
-                        except Exception:
-                            pass
-            finally:
-                repo.close()
+                    would_discard.extend(repo.commits_between(default, branch))
 
     if not confirm:
         return AbortResult(
@@ -634,36 +481,23 @@ def abort_branch(confirm: bool = False) -> AbortResult:
     # confirm=True: delete branch in both repos
     content_discarded = False
     runtime_discarded = False
-    for root, flag_name in ((config.content_definitions_root, "content"), (runtime_root, "runtime")):
+    for root, flag_name in (
+        (config.content_definitions_root, "content"),
+        (runtime_root, "runtime"),
+    ):
         if not _is_repo(root) or not branch:
             continue
-        repo = GitRepo(root)
-        try:
-            default = _default_branch_for(repo)
+        with GitRepo(root) as repo:
+            default = repo.default_branch()
             if branch in repo.list_branches():
                 # checkout default if currently on feature branch
-                if repo.current_branch() == branch:
-                    if default in repo.list_branches():
-                        repo.checkout(default)
+                if repo.current_branch() == branch and default in repo.list_branches():
+                    repo.checkout(default)
+                if repo.delete_branch(branch):
+                    if flag_name == "content":
+                        content_discarded = True
                     else:
-                        # fallback: create? just try checkout
-                        pass
-                # delete branch
-                try:
-                    rrepo = getattr(repo, "_repo", None)
-                    if rrepo is not None and hasattr(rrepo, "git"):
-                        rrepo.git.branch("-D", branch)
-                        if flag_name == "content":
-                            content_discarded = True
-                        else:
-                            runtime_discarded = True
-                except Exception:
-                    pass
-        finally:
-            repo.close()
-
-    _active_branch = None
-    _branch_systems = set()
+                        runtime_discarded = True
 
     return AbortResult(
         discarded_branch=branch,
@@ -677,6 +511,31 @@ def abort_branch(confirm: bool = False) -> AbortResult:
     )
 
 
+def _diff_stats(repo: GitRepo, default: str) -> dict:
+    """Files, insertions and deletions for one repository's current branch.
+
+    Combines the working tree (staged, unstaged and untracked files) with the
+    commits made since ``default`` diverged. One helper for both repositories
+    keeps the counting rule in one place.
+    """
+    status = repo.status()
+    files = (
+        set(status.get("staged", []))
+        | set(status.get("unstaged", []))
+        | set(status.get("untracked", []))
+    )
+
+    working = repo.diff_stat()
+    committed = repo.diff_stat(default)
+    files |= set(working["files"]) | set(committed["files"])
+
+    return {
+        "files": sorted(files),
+        "insertions": working["insertions"] + committed["insertions"],
+        "deletions": working["deletions"] + committed["deletions"],
+    }
+
+
 def review_branch() -> str:
     """Return a summary of the changes in the active branch."""
 
@@ -687,73 +546,18 @@ def review_branch() -> str:
 
     branch_name = _branch_state(config, runtime_root)[0]
 
-    # Content repo diff
-    content_files: list[str] = []
-    content_ins = 0
-    content_del = 0
+    content = {"files": [], "insertions": 0, "deletions": 0}
     if _is_repo(content_root):
-        repo = GitRepo(content_root)
-        try:
+        with GitRepo(content_root) as repo:
             if branch_name is None:
                 branch_name = repo.current_branch()
-            st = repo.status()
-            content_files = sorted(set(st.get("staged", []) + st.get("unstaged", []) + st.get("untracked", [])))
-            for staged in (False, True):
-                d = repo.diff(staged=staged)
-                for line in d.splitlines():
-                    if line.startswith("+") and not line.startswith("+++"):
-                        content_ins += 1
-                    elif line.startswith("-") and not line.startswith("---"):
-                        content_del += 1
-            # Committed changes since divergence from default branch
-            try:
-                default = _default_branch_for(repo)
-                committed_names = repo._repo.git.diff(f"{default}...HEAD", "--name-only").splitlines()
-                content_files = sorted(set(content_files + [n for n in committed_names if n]))
-                committed_diff = repo._repo.git.diff(f"{default}...HEAD")
-                for line in committed_diff.splitlines():
-                    if line.startswith("+") and not line.startswith("+++"):
-                        content_ins += 1
-                    elif line.startswith("-") and not line.startswith("---"):
-                        content_del += 1
-            except Exception:
-                pass
-        finally:
-            repo.close()
+            content = _diff_stats(repo, repo.default_branch())
 
-    # Runtime root diff
-    runtime_files: list[str] = []
-    runtime_ins = 0
-    runtime_del = 0
     runtime_is_git = _is_repo(runtime_root)
+    runtime = {"files": [], "insertions": 0, "deletions": 0}
     if runtime_is_git:
-        repo = GitRepo(runtime_root)
-        try:
-            st = repo.status()
-            runtime_files = sorted(set(st.get("staged", []) + st.get("unstaged", []) + st.get("untracked", [])))
-            for staged in (False, True):
-                d = repo.diff(staged=staged)
-                for line in d.splitlines():
-                    if line.startswith("+") and not line.startswith("+++"):
-                        runtime_ins += 1
-                    elif line.startswith("-") and not line.startswith("---"):
-                        runtime_del += 1
-            try:
-                default = _default_branch_for(repo)
-                committed_names = repo._repo.git.diff(f"{default}...HEAD", "--name-only").splitlines()
-                runtime_files = sorted(set(runtime_files + [n for n in committed_names if n]))
-                committed_diff = repo._repo.git.diff(f"{default}...HEAD")
-                for line in committed_diff.splitlines():
-                    if line.startswith("+") and not line.startswith("+++"):
-                        runtime_ins += 1
-                    elif line.startswith("-") and not line.startswith("---"):
-                        runtime_del += 1
-            except Exception:
-                pass
-        finally:
-            repo.close()
-
-    systems = sorted(_branch_systems)
+        with GitRepo(runtime_root) as repo:
+            runtime = _diff_stats(repo, repo.default_branch())
 
     lines = []
     lines.append("# Branch Review Summary")
@@ -761,30 +565,26 @@ def review_branch() -> str:
     lines.append(f"**Branch:** {branch_name or '(none)'}")
     lines.append("")
     lines.append("## Content Repo")
-    lines.append(f"- Files changed: {len(content_files)}")
-    lines.append(f"- Insertions: {content_ins}")
-    lines.append(f"- Deletions: {content_del}")
-    if content_files:
-        for f in content_files:
-            lines.append(f"  - {f}")
+    lines.append(f"- Files changed: {len(content['files'])}")
+    lines.append(f"- Insertions: {content['insertions']}")
+    lines.append(f"- Deletions: {content['deletions']}")
+    for name in content["files"]:
+        lines.append(f"  - {name}")
     lines.append("")
     lines.append("## Runtime Root")
     if runtime_is_git:
-        lines.append(f"- Files changed: {len(runtime_files)}")
-        lines.append(f"- Insertions: {runtime_ins}")
-        lines.append(f"- Deletions: {runtime_del}")
-        if runtime_files:
-            for f in runtime_files:
-                lines.append(f"  - {f}")
+        lines.append(f"- Files changed: {len(runtime['files'])}")
+        lines.append(f"- Insertions: {runtime['insertions']}")
+        lines.append(f"- Deletions: {runtime['deletions']}")
+        for name in runtime["files"]:
+            lines.append(f"  - {name}")
     else:
         lines.append("- (non-git runtime root; diff skipped)")
     lines.append("")
+    # Branch state is derived from git alone; it carries no system list, so the
+    # section is kept for a stable report shape and always reports none.
     lines.append("## Systems Affected")
-    if systems:
-        for s in systems:
-            lines.append(f"- {s}")
-    else:
-        lines.append("(none)")
+    lines.append("(none)")
     lines.append("")
 
     return "\n".join(lines)

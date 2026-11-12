@@ -803,3 +803,112 @@ def test_branch_finalize_rejects_no_merge_with_push(flags, capsys):
     assert "--push" in error
 
 
+# ---------------------------------------------------------------------------
+# Branch payload key sets and the review report's pinned sections
+# ---------------------------------------------------------------------------
+
+
+def _branch_json(capsys, *args: str, expected_code: int = 0) -> dict:
+    assert cli.main(["branch", *args]) == expected_code
+    return json.loads(capsys.readouterr().out)
+
+
+def test_branch_start_payload_has_exactly_one_key_per_concept(
+    monkeypatch, tmp_path, capsys
+):
+    """Adding an alias back (or dropping a field) must fail here."""
+    _branch_environment(monkeypatch, tmp_path)
+
+    data = _branch_json(capsys, "start", "payload keys")
+
+    assert set(data) == {
+        "branch_name",
+        "repos_branched",
+        "backup_path",
+        "warnings",
+        "message",
+    }
+
+
+def test_branch_status_payload_has_exactly_one_key_per_concept(
+    monkeypatch, tmp_path, capsys
+):
+    """``systems_affected`` and the branch-name aliases must not come back."""
+    _branch_environment(monkeypatch, tmp_path)
+
+    data = _branch_json(capsys, "status")
+
+    assert set(data) == {
+        "active_branch",
+        "content_current_branch",
+        "runtime_current_branch",
+        "content_status",
+        "runtime_status",
+        "uncommitted_changes",
+        "content_uncommitted",
+        "runtime_uncommitted",
+        "has_uncommitted_changes",
+        "foreign_checkout",
+    }
+
+
+def test_branch_finalize_payload_has_exactly_one_key_per_concept(
+    monkeypatch, tmp_path, capsys
+):
+    _branch_environment(monkeypatch, tmp_path)
+
+    data = _branch_json(capsys, "finalize")
+
+    assert set(data) == {
+        "merged",
+        "merge_commits",
+        "content_merge_commit",
+        "runtime_merge_commit",
+        "merge_errors",
+        "failed_repos",
+        "pushed",
+        "push_status",
+        "message",
+    }
+
+
+def test_branch_abort_payload_has_exactly_one_key_per_concept(
+    monkeypatch, tmp_path, capsys
+):
+    _branch_environment(monkeypatch, tmp_path)
+
+    data = _branch_json(capsys, "abort")
+
+    assert set(data) == {
+        "discarded_branch",
+        "would_discard",
+        "discarded",
+        "discarded_commits",
+        "content_discarded",
+        "runtime_discarded",
+        "confirmed",
+        "message",
+    }
+
+
+def test_branch_review_keeps_the_pinned_report_sections(monkeypatch, tmp_path, capsys):
+    """Proposal 8 pins the report shape, including the retained systems section."""
+    content_root, _ = _branch_environment(monkeypatch, tmp_path)
+    _start_branch(capsys, "review sections")
+    (content_root / "systems" / "change.txt").write_text("change\n", encoding="utf-8")
+
+    assert cli.main(["branch", "review"]) == 0
+    report = capsys.readouterr().out
+
+    assert report.startswith("# Branch Review Summary")
+    assert "**Branch:** gen/review-sections" in report
+    assert "## Content Repo" in report
+    assert "## Runtime Root" in report
+    # The (none) section survives proposal 3's deletion of the process mirror.
+    assert "## Systems Affected\n(none)" in report
+    assert report.count("Files changed:") == 2
+    assert report.count("Insertions:") == 2
+    assert report.count("Deletions:") == 2
+
+
+
