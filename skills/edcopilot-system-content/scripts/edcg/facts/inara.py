@@ -4,14 +4,13 @@ Provides async HTTP client for fetching station and system data from
 the Inara API v2.
 """
 
-import asyncio
-import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
-from urllib.parse import quote
 
 import httpx
+
+from edcg.facts._http import ApiClient, ApiError
 
 
 @dataclass
@@ -38,17 +37,31 @@ class InaraSystem:
     updated: datetime
 
 
-class InaraAPIError(Exception):
+class InaraAPIError(ApiError):
     """Exception raised for Inara API errors."""
     pass
 
 
-class InaraClient:
+class InaraClient(ApiClient):
     """Async HTTP client for the Inara API v2.
 
     Provides methods to fetch station and system data with configurable
     retry, timeout, and rate limiting.
+
+    Redirects are deliberately not followed. The old package followed them,
+    but this client POSTs a JSON body carrying the Inara API key: replaying
+    that body cross-origin on a 307/308 is an unnecessary exposure, and a
+    redirect from the API endpoint signals a configuration problem rather
+    than a legitimate move. A redirect therefore reaches the caller
+    unfollowed: the 3xx body is usually HTML, so parsing it fails and the
+    request surfaces as ``InaraAPIError("Invalid JSON response")`` rather
+    than a successful response.
     """
+
+    error_type = InaraAPIError
+    follow_redirects = False
+    retry_statuses = frozenset({429})
+    request_verb = "post"
 
     def __init__(
         self,
@@ -69,65 +82,7 @@ class InaraClient:
             rate_limit: Maximum requests per second (0 = no limit).
         """
         self.api_key = api_key
-        self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
-        self.max_retries = max_retries
-        self.rate_limit = rate_limit
-        self._client: Optional[httpx.AsyncClient] = None
-        self._last_request_time: float = 0.0
-        self._rate_lock = asyncio.Lock()
-
-    async def __aenter__(self) -> "InaraClient":
-        """Enter async context manager."""
-        await self._ensure_client()
-        return self
-
-    async def __aexit__(
-        self,
-        exc_type: Optional[type[BaseException]],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[object],
-    ) -> None:
-        """Exit async context manager."""
-        await self.close()
-
-    async def _ensure_client(self) -> httpx.AsyncClient:
-        """Ensure the HTTP client is created.
-
-        Redirects are deliberately not followed. The old package followed them,
-        but this client POSTs a JSON body carrying the Inara API key: replaying
-        that body cross-origin on a 307/308 is an unnecessary exposure, and a
-        redirect from the API endpoint signals a configuration problem rather
-        than a legitimate move. A redirect therefore reaches the caller
-        unfollowed: the 3xx body is usually HTML, so parsing it fails and the
-        request surfaces as ``InaraAPIError("Invalid JSON response")`` rather
-        than a successful response.
-        """
-        if self._client is None:
-            self._client = httpx.AsyncClient(
-                timeout=httpx.Timeout(self.timeout),
-                follow_redirects=False,
-            )
-        return self._client
-
-    async def close(self) -> None:
-        """Close the HTTP client."""
-        if self._client is not None:
-            await self._client.aclose()
-            self._client = None
-
-    async def _rate_limit_wait(self) -> None:
-        """Wait if necessary to respect rate limit."""
-        if self.rate_limit <= 0:
-            return
-
-        min_interval = 1.0 / self.rate_limit
-        async with self._rate_lock:
-            now = time.monotonic()
-            elapsed = now - self._last_request_time
-            if elapsed < min_interval:
-                await asyncio.sleep(min_interval - elapsed)
-            self._last_request_time = time.monotonic()
+        super().__init__(base_url, timeout, max_retries, rate_limit)
 
     def _build_request(self, event_name: str, event_data: dict[str, Any]) -> dict[str, Any]:
         """Build the Inara API request payload."""
@@ -146,44 +101,6 @@ class InaraClient:
                 }
             ],
         }
-
-    async def _request_with_retry(self, payload: dict[str, Any]) -> httpx.Response:
-        """Make an HTTP POST request with retry logic."""
-        client = await self._ensure_client()
-        await self._rate_limit_wait()
-
-        last_exception: Optional[BaseException] = None
-        for attempt in range(self.max_retries + 1):
-            try:
-                response = await client.post(self.base_url, json=payload)
-                response.raise_for_status()
-                return response
-            except (httpx.RequestError, httpx.TimeoutException) as e:
-                last_exception = e
-                if attempt < self.max_retries:
-                    # Exponential backoff: 1s, 2s, 4s, ...
-                    await asyncio.sleep(2 ** attempt)
-                    continue
-                break
-            except httpx.HTTPStatusError as e:
-                # Don't retry client errors (4xx), only server errors (5xx) and 429
-                if 400 <= e.response.status_code < 500 and e.response.status_code != 429:
-                    raise InaraAPIError(f"HTTP {e.response.status_code}: {e}") from e
-                last_exception = e
-                if attempt < self.max_retries:
-                    await asyncio.sleep(2 ** attempt)
-                    continue
-                break
-
-        # All retries exhausted
-        if isinstance(last_exception, httpx.TimeoutException):
-            raise InaraAPIError(f"Request timed out after {self.max_retries + 1} attempts") from last_exception
-        elif isinstance(last_exception, httpx.RequestError):
-            raise InaraAPIError(f"Network error: {last_exception}") from last_exception
-        elif last_exception is not None:
-            raise InaraAPIError(f"Request failed after {self.max_retries + 1} attempts: {last_exception}") from last_exception
-        else:
-            raise InaraAPIError(f"Request failed after {self.max_retries + 1} attempts: unknown error")
 
     def _parse_response(self, response: httpx.Response, event_name: str) -> Optional[dict[str, Any]]:
         """Parse Inara API response and extract event data."""
@@ -249,7 +166,7 @@ class InaraClient:
             }
         )
 
-        response = await self._request_with_retry(payload)
+        response = await self._request_with_retry("POST", self.base_url, json=payload)
         event_data = self._parse_response(response, "getStation")
 
         if event_data is None:
@@ -293,7 +210,7 @@ class InaraClient:
             }
         )
 
-        response = await self._request_with_retry(payload)
+        response = await self._request_with_retry("POST", self.base_url, json=payload)
         event_data = self._parse_response(response, "getStarSystem")
 
         if event_data is None:

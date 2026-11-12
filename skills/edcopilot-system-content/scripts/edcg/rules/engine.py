@@ -77,26 +77,37 @@ def _get_all_build_types() -> dict[str, dict[str, str]]:
     return flat
 
 
+# Used only when base.toml does not declare the list. The data is the source of
+# truth; this fallback exists so a malformed rules file degrades rather than
+# silently calling hubs landable.
+_DEFAULT_NOT_LANDABLE_CLASSES = ("hub", "installation")
+
+
+def not_landable_classes() -> tuple[str, ...]:
+    """Facility classes that cannot take landing pads, from base.toml."""
+    cfg = (
+        get_base_rules()
+        .get("rules", {})
+        .get("content", {})
+        .get("station_landable", {})
+    )
+    return tuple(
+        str(cls).lower()
+        for cls in cfg.get("not_landable_classes", _DEFAULT_NOT_LANDABLE_CLASSES)
+    )
+
+
 def get_landable_build_types() -> list[str]:
     """Get list of build types that are landable (not hub/installation)."""
-    # From base.toml: not_landable_classes = ["hub", "installation"]
-    all_bts = _get_all_build_types()
-    landable = []
-    for bt_name, bt_info in all_bts.items():
-        bt_class = bt_info.get("class", "").lower()
-        if bt_class not in ("hub", "installation"):
-            landable.append(bt_name)
-    return landable
+    return [bt for bt in _get_all_build_types() if is_landable_build_type(bt)]
 
 
 def is_landable_build_type(build_type: str) -> bool:
     """Check if a build type is landable (has landing pads)."""
-    all_bts = _get_all_build_types()
-    bt_info = all_bts.get(build_type)
+    bt_info = _get_all_build_types().get(build_type)
     if bt_info is None:
         return False
-    bt_class = bt_info.get("class", "").lower()
-    return bt_class not in ("hub", "installation")
+    return str(bt_info.get("class", "")).lower() not in not_landable_classes()
 
 
 def get_facility_class(build_type: str) -> str:
@@ -138,8 +149,10 @@ def get_placement(build_type: str) -> str:
 
 __all__ = [
     "get_build_types",
+    "get_landable_build_types",
     "is_landable_build_type",
     "get_facility_class",
     "get_facility_name",
     "get_placement",
+    "not_landable_classes",
 ]

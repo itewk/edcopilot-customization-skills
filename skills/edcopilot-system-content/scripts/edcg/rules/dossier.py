@@ -1,50 +1,65 @@
-"""Dossier parsing utilities for EDCoPilot customization content.
+"""Dossier markdown parsing for the EDCoPilot system content skill.
 
-Contains functions for parsing and validating system dossiers, including:
-- Section parsing
-- Site table extraction 
-- Voice coverage analysis
-- Station list parsing
+A dossier is prose plus a handful of machine-readable conventions: numbered
+sections, a site table in section 4, a ``Voices used`` list in section 8 and a
+station-coverage list in section 7. Reading those is one subject, so it lives
+here rather than among the speech-content rules in ``validation.py``.
+
+The names are public because ``rules/validation.py`` and ``repo/brief.py`` both
+consume them; nothing imports a leading underscore across a module boundary.
 """
 
 import re
-from typing import List, Dict, Set, Tuple, Optional
 
-# Regular expressions used in dossier parsing
+DOSSIER_SECTIONS = [
+    "Identity and canon",
+    "Lore and theme",
+    "Tone rules (hard constraints)",
+    "Canon site table",
+    "Corrections log (do not reintroduce these)",
+    "Site list maintenance",
+    "Coverage",
+    "Writing rules",
+    "Open threads (TODO)",
+]
+
 SECTION_RE = re.compile(r"^##\s+(\d+)\.\s*(.*?)\s*$")
 VOICE_TAG_RE = re.compile(r"\[<([^>]+)>\]")
 
+_DESCRIPTIVE_PREFIXES = (
+    "Built", "Tentative", "and ", "so ", "the ", "a ", "an ",
+)
 
-def _parse_dossier_sections(dossier: str) -> Tuple[Dict[int, Tuple[str, List[str]]], List[int]]:
-    """Parse dossier into sections: {section_num: (title, lines)}, and section_order list."""
-    sections: Dict[int, Tuple[str, List[str]]] = {}
-    section_order: List[int] = []
-    lines = dossier.splitlines()
+
+def parse_sections(dossier: str) -> tuple[dict[int, tuple[str, list[str]]], list[int]]:
+    """Parse a dossier into ``{section_num: (title, lines)}`` and section order."""
+    sections: dict[int, tuple[str, list[str]]] = {}
+    section_order: list[int] = []
     current_num = None
     current_title = None
-    current_lines: List[str] = []
-    
-    for line in lines:
-        m = SECTION_RE.match(line)
-        if m:
+    current_lines: list[str] = []
+
+    for line in dossier.splitlines():
+        match = SECTION_RE.match(line)
+        if match:
             if current_num is not None:
                 sections[current_num] = (current_title, current_lines)
-            current_num = int(m.group(1))
-            current_title = m.group(2).strip()
+            current_num = int(match.group(1))
+            current_title = match.group(2).strip()
             current_lines = []
             section_order.append(current_num)
         else:
             current_lines.append(line)
-    
+
     if current_num is not None:
         sections[current_num] = (current_title, current_lines)
-    
+
     return sections, section_order
 
 
-def _extract_site_table(lines: List[str]) -> List[Dict]:
+def extract_site_table(lines: list[str]) -> list[dict]:
     """Extract site table rows from section 4 lines.
-    
+
     Returns list of {name, build_type, body, status} dicts.
     Looks for tables with "Build type" column and a site name column.
     Handles variations like "Site | Build type | Body" or "System | Site | Build type | Orbits".
@@ -53,108 +68,132 @@ def _extract_site_table(lines: List[str]) -> List[Dict]:
     sites = []
     i = 0
     current_status = "unknown"
-    
+
     while i < len(lines):
         line = lines[i].strip()
-        
+
         # Track subsection status
-        if line.startswith("###"):
-            if "complete" in line.lower():
-                current_status = "complete"
-            elif "build" in line.lower() or "construction" in line.lower():
-                current_status = "build"
-            elif "plan" in line.lower():
-                current_status = "plan"
-            elif "tentative" in line.lower():
-                current_status = "tentative"
-        
-        # Look for table rows with site names
-        if "|" in line and not line.startswith("#") and line.strip() != "":
-            # Skip header lines 
-            if any(header in line.lower() for header in ["site", "build type", "system", "body"]):
-                i += 1
-                continue
-                
-            # Parse table row (assumes format like: | Site Name | Build Type | Body | Status |)
-            parts = [p.strip() for p in line.split('|') if p.strip()]
-            
-            if len(parts) >= 2:
-                # Extract site name and build type from the first two columns
-                site_name = parts[0].strip()
-                build_type = parts[1].strip()
-                
-                # Try to extract body and status from remaining columns
-                body = ""
-                status = current_status
-                
-                if len(parts) >= 4:
-                    # Body is usually in column 3, status in column 4
-                    body = parts[2].strip()
-                    status = parts[3].strip().lower() or current_status
-                    
-                # Only add if we have a valid site name
-                if site_name and not site_name.startswith('Site') and not site_name.startswith('---'):
-                    sites.append({
-                        'name': site_name,
-                        'build_type': build_type,
-                        'body': body,
-                        'status': status
-                    })
+        if line.startswith("### Complete"):
+            current_status = "complete"
+        elif line.startswith("### Under construction"):
+            current_status = "build"
+        elif line.startswith("### Definitely planned"):
+            current_status = "plan"
+        elif line.startswith("### Tentatively planned"):
+            current_status = "tentative"
+
+        # Look for the header row - must have "Build type" column
+        if line.startswith("|") and "Build type" in line:
+            # Found a potential site table header, check for separator row next
+            if i + 1 < len(lines):
+                sep_line = lines[i + 1].strip()
+                if sep_line.startswith("|") and all(
+                    c.startswith("-") or c.startswith(":")
+                    for c in [c.strip() for c in sep_line.strip("|").split("|")]
+                ):
+                    # This is a site table, parse header to find column indices
+                    header_cells = [c.strip() for c in line.strip("|").split("|")]
+                    name_col = None
+                    build_type_col = None
+                    body_col = None
+
+                    for idx, cell in enumerate(header_cells):
+                        cell_lower = cell.lower()
+                        if "site" in cell_lower and name_col is None:
+                            name_col = idx
+                        elif "build type" in cell_lower:
+                            build_type_col = idx
+                        elif "body" in cell_lower or "orbits" in cell_lower:
+                            body_col = idx
+
+                    # If we can't find columns by name, use positional defaults
+                    if name_col is None:
+                        name_col = 0 if "system" not in header_cells[0].lower() else 1
+                    if build_type_col is None:
+                        build_type_col = 1 if name_col == 0 else 2
+                    if body_col is None:
+                        body_col = 2 if build_type_col == 1 else 3
+
+                    # Parse data rows
+                    i += 2
+                    while i < len(lines):
+                        data_line = lines[i].strip()
+                        if not data_line.startswith("|"):
+                            break
+                        cells = [c.strip() for c in data_line.strip("|").split("|")]
+                        max_col = max(name_col, build_type_col, body_col)
+                        if len(cells) > max_col:
+                            name = cells[name_col].strip().strip("`").strip("*").strip("**").strip()
+                            build_type_cell = cells[build_type_col].strip()
+                            body = cells[body_col].strip().strip("`").strip() if body_col < len(cells) else ""
+
+                            # Extract build type from backticks
+                            build_type_match = re.search(r"`([a-z][a-z0-9_]*)`", build_type_cell)
+                            build_type = build_type_match.group(1) if build_type_match else ""
+
+                            if name and build_type:
+                                sites.append({
+                                    "name": name,
+                                    "build_type": build_type,
+                                    "body": body,
+                                    "status": current_status,
+                                })
+                        i += 1
+                    continue  # Continue looking for more tables
         i += 1
-    
+
     return sites
 
 
-def _get_landable_build_types() -> Set[str]:
-    """Return set of landable build types (those with landing pads)."""
-    # This is a simplified version - in reality, this would come from the build types catalog
-    return {
-        "starport", "outpost", "settlement", "scientific_outpost",
-        "research_station", "orbital_station", "space_station"
-    }
+def extract_voices(lines: list[str], known_tokens: set[str]) -> set[str]:
+    """Extract voice names from dossier section 8 (Writing rules).
 
+    Only extracts from the "Voices used" subsection. ``known_tokens`` is the
+    lower-cased set of EDCoPilot vocabulary tokens, which are substitutions
+    rather than voices; the caller supplies it from the rule data so this list
+    has one owner.
 
-def _extract_voices_from_section_8(lines: List[str]) -> Set[str]:
-    """Extract voice names from dossier section 8 (Writing rules)."""
-    voices: Set[str] = set()
+    Args:
+        lines: The section's lines.
+        known_tokens: Lower-cased tokens to exclude from the voice set.
+    """
+    voices = set()
     in_voices_used = False
-    known_tokens = {
-        "commander", "myshipname", "cmdrname", "system", "station", 
-        "shipname", "shipclass", "shipmodel", "shipvariant"
-    }
-    
+
     for line in lines:
         stripped = line.strip()
-        
-        # Look for the section that lists voices used
-        if "Voices used" in stripped and "###" in stripped:
+
+        # Check for "Voices used" header
+        if stripped.startswith("###") and "Voices used" in stripped:
             in_voices_used = True
             continue
-        
+
         # Stop at next subsection header
         if in_voices_used and stripped.startswith("###"):
             break
-        
+
         if in_voices_used:
             for match in VOICE_TAG_RE.finditer(line):
                 voice = match.group(1)
                 # Exclude known tokens (case-insensitive)
                 if voice.lower() not in known_tokens:
                     voices.add(voice)
-    
+
     return voices
 
 
-def _normalize_station_name(name: str) -> str:
+def normalize_station_name(name: str) -> str:
     """Normalize station name for comparison: strip markdown formatting."""
-    # Remove backticks and asterisks
-    name = name.strip("`").strip("*").strip()
-    return name
+    return name.strip("`").strip("*").strip()
 
 
-_DESCRIPTIVE_PREFIXES = (
-    "Built", "Tentative", "and ", "so ", "the ", "a ", "an ",
-)
+def known_token_names(vocab: dict) -> list[str]:
+    """EDCoPilot vocabulary tokens in ``vocab``, documented and not.
+
+    These are substitution tokens rather than voices, so ``extract_voices``
+    filters them out. The list has one owner: the rule data.
+    """
+    return list(vocab.get("documented", {})) + list(vocab.get("undocumented", []))
 
 
 def _is_descriptive(line: str) -> bool:
@@ -167,15 +206,15 @@ def _is_descriptive(line: str) -> bool:
     )
 
 
-def _parse_station_list(text: str) -> Set[str]:
+def _parse_station_list(text: str) -> set[str]:
     """Split one coverage line on its separators and keep station-like names."""
-    stations: Set[str] = set()
+    stations: set[str] = set()
     for part in re.split(r"[·•,\n]", text):
         part = part.strip().strip("`").strip("*").strip()
         if part and len(part) > 2 and not part.lower().startswith(
             ("the ", "a ", "an ")
         ):
-            stations.add(_normalize_station_name(part))
+            stations.add(normalize_station_name(part))
     return stations
 
 
@@ -188,9 +227,9 @@ def _starts_simple_station_list(stripped: str) -> bool:
     )
 
 
-def _extract_stations_from_section_7(lines: List[str]) -> Set[str]:
+def extract_coverage_stations(lines: list[str]) -> set[str]:
     """Station names from section 7: a ``### Stations covered`` list or a simple one."""
-    stations: Set[str] = set()
+    stations: set[str] = set()
     in_station_list = False
     for line in lines:
         stripped = line.strip()
@@ -211,13 +250,12 @@ def _extract_stations_from_section_7(lines: List[str]) -> Set[str]:
 
 
 __all__ = [
-    "_parse_dossier_sections",
-    "_extract_site_table", 
-    "_get_landable_build_types",
-    "_extract_voices_from_section_8",
-    "_normalize_station_name",
-    "_is_descriptive",
-    "_parse_station_list",
-    "_starts_simple_station_list",
-    "_extract_stations_from_section_7",
+    "DOSSIER_SECTIONS",
+    "SECTION_RE",
+    "parse_sections",
+    "extract_site_table",
+    "extract_voices",
+    "extract_coverage_stations",
+    "known_token_names",
+    "normalize_station_name",
 ]

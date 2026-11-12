@@ -4,12 +4,15 @@ Provides async HTTP client for fetching system plans and site data from
 the Raven Colonial API.
 """
 
-import asyncio
 from dataclasses import dataclass, field
 from typing import Optional
 from urllib.parse import quote
 
-from edcg.facts.transport import HTTPTransport
+# The shared transport creates the client through this module-level httpx
+# binding, which is the seam the client tests patch.
+import httpx  # noqa: F401
+
+from edcg.facts._http import ApiClient, ApiError
 
 
 @dataclass
@@ -52,7 +55,7 @@ class RavenSite:
     body_num: int
 
 
-class RavenAPIError(Exception):
+class RavenAPIError(ApiError):
     """Exception raised for Raven API errors."""
     pass
 
@@ -151,12 +154,14 @@ def is_unresolved_site(site: RavenSite) -> bool:
     return False
 
 
-class RavenClient:
+class RavenClient(ApiClient):
     """Async HTTP client for the Raven Colonial API.
 
     Provides methods to fetch system plans and colonisation site data
     with configurable retry, timeout, and rate limiting.
     """
+
+    error_type = RavenAPIError
 
     def __init__(
         self,
@@ -173,50 +178,7 @@ class RavenClient:
             max_retries: Maximum number of retry attempts for failed requests.
             rate_limit: Maximum requests per second (0 = no limit).
         """
-        self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
-        self.max_retries = max_retries
-        self.rate_limit = rate_limit
-        self._transport = HTTPTransport(base_url, timeout, max_retries, rate_limit)
-
-    async def __aenter__(self) -> "RavenClient":
-        """Enter async context manager."""
-        await self._transport.__aenter__()
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Exit async context manager."""
-        await self._transport.__aexit__(exc_type, exc_val, exc_tb)
-
-    async def _ensure_client(self) -> httpx.AsyncClient:
-        """Ensure the HTTP client is created."""
-        if self._client is None:
-            self._client = httpx.AsyncClient(
-                timeout=httpx.Timeout(self.timeout),
-                follow_redirects=True,
-            )
-        return self._client
-
-    async def close(self) -> None:
-        """Close the HTTP client."""
-        await self._transport.close()
-
-    async def _rate_limit_wait(self) -> None:
-        """Wait if necessary to respect rate limit."""
-        if self.rate_limit <= 0:
-            return
-
-        min_interval = 1.0 / self.rate_limit
-        async with self._rate_lock:
-            now = time.monotonic()
-            elapsed = now - self._last_request_time
-            if elapsed < min_interval:
-                await asyncio.sleep(min_interval - elapsed)
-            self._last_request_time = time.monotonic()
-
-    async def _request_with_retry(self, method: str, url: str, **kwargs) -> httpx.Response:
-        """Make an HTTP request with retry logic."""
-        return await self._transport._request_with_retry(method, url, **kwargs)
+        super().__init__(base_url, timeout, max_retries, rate_limit)
 
     async def get_system(self, system_name: str) -> RavenSystem:
         """Fetch a system plan from Raven Colonial.

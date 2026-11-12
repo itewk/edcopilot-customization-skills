@@ -15,14 +15,17 @@ from typing import Awaitable, Callable
 from edcg.common.config import Config
 from edcg.common.layout import dossier_path, rules_path, slugify, systems_dir
 from edcg.facts.facts import SystemFacts, compute_facts_diff
+from edcg.rules.dossier import (
+    extract_coverage_stations,
+    extract_site_table,
+    extract_voices,
+    known_token_names,
+    normalize_station_name,
+    parse_sections,
+)
+from edcg.rules.engine import get_landable_build_types
 from edcg.rules.validation import (
     RULE_DATA_DIR,
-    _extract_site_table,
-    _extract_stations_from_section_7,
-    _extract_voices_from_section_8,
-    _get_landable_build_types,
-    _normalize_station_name,
-    _parse_dossier_sections,
     load_base_config,
     resolve_bounds,
 )
@@ -59,10 +62,10 @@ def parse_dossier_for_diff(dossier: str) -> dict:
     Port of the old helper: classify section-4 sites by build type and read the
     Raven revision from section 1.
     """
-    sections, _ = _parse_dossier_sections(dossier)
-    sites = _extract_site_table(sections.get(4, ("", []))[1])
+    sections, _ = parse_sections(dossier)
+    sites = extract_site_table(sections.get(4, ("", []))[1])
 
-    landable_build_types = _get_landable_build_types()
+    landable_build_types = set(get_landable_build_types())
     landable_stations: list[dict] = []
     non_landable_sites: list[dict] = []
     for site in sites:
@@ -93,8 +96,8 @@ def parse_dossier_for_diff(dossier: str) -> dict:
 
 def _landable_stations_from_dossier(sections: dict) -> list[dict]:
     """Landable, non-tentative sites that also appear in section 7 coverage."""
-    landable_build_types = _get_landable_build_types()
-    sites = _extract_site_table(sections.get(4, ("", []))[1])
+    landable_build_types = set(get_landable_build_types())
+    sites = extract_site_table(sections.get(4, ("", []))[1])
     candidates = [
         site
         for site in sites
@@ -102,8 +105,8 @@ def _landable_stations_from_dossier(sections: dict) -> list[dict]:
         and site.get("status") != "tentative"
     ]
 
-    coverage = _extract_stations_from_section_7(sections.get(7, ("", []))[1])
-    by_name = {_normalize_station_name(site["name"]): site for site in candidates}
+    coverage = extract_coverage_stations(sections.get(7, ("", []))[1])
+    by_name = {normalize_station_name(site["name"]): site for site in candidates}
     return [by_name[name] for name in sorted(coverage) if name in by_name]
 
 
@@ -167,12 +170,16 @@ def writing_brief_data(config: Config, system_name: str) -> dict:
     rules_text = rules_file.read_text(encoding="utf-8")
     system_rules = tomllib.loads(rules_text)
 
-    sections, _ = _parse_dossier_sections(dossier_text)
-    sites = _extract_site_table(sections.get(4, ("", []))[1])
+    sections, _ = parse_sections(dossier_text)
+    sites = extract_site_table(sections.get(4, ("", []))[1])
     landable_stations = _landable_stations_from_dossier(sections)
 
+    base = load_base_config(RULE_DATA_DIR)
+    known_tokens = {
+        name.lower() for name in known_token_names(base.get("vocab", {}))
+    }
     dossier_voices = (
-        _extract_voices_from_section_8(sections[8][1]) if 8 in sections else set()
+        extract_voices(sections[8][1], known_tokens) if 8 in sections else set()
     )
     rules_voices = system_rules.get("system", {}).get("voices", [])
     if not isinstance(rules_voices, list):
@@ -184,9 +191,7 @@ def writing_brief_data(config: Config, system_name: str) -> dict:
         if rev_match:
             raven_revision = int(rev_match.group(1))
 
-    base = load_base_config(RULE_DATA_DIR)
     bounds_kinds, bounds_stations = resolve_bounds(base, system_rules)
-
     return {
         "system_name": system_name,
         "slug": slugify(system_name),
