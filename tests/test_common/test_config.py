@@ -7,7 +7,13 @@ from unittest.mock import patch
 
 import pytest
 
-from edcg.common.config import Config, load_config, ConfigError, ContentRootError
+from edcg.common.config import (
+    Config,
+    load_config,
+    resolve_edcopilot_root,
+    ConfigError,
+    ContentRootError,
+)
 
 
 class TestLoadConfig:
@@ -35,7 +41,13 @@ class TestLoadConfig:
 
             config = load_config(env_vars)
             assert config.content_definitions_root == content_definitions_root
-            assert config.edcopilot_root == edcopilot_root
+            # The raw field is gone; the environment stays authoritative through
+            # the resolver, which still finds the root the env var names.
+            assert not hasattr(config, "edcopilot_root")
+            assert (
+                resolve_edcopilot_root(config.content_root, env_vars).path
+                == edcopilot_root
+            )
             assert config.auto_commit is False
             assert config.raven_api_url == "https://custom.raven.url"
             assert config.inara_api_key == "inara-key-123"
@@ -59,7 +71,13 @@ class TestLoadConfig:
 
             config = load_config(env_vars)
             assert config.content_definitions_root == content_definitions_root
-            assert config.edcopilot_root == edcopilot_root
+            # The raw field is gone; the environment stays authoritative through
+            # the resolver, which still finds the root the env var names.
+            assert not hasattr(config, "edcopilot_root")
+            assert (
+                resolve_edcopilot_root(config.content_root, env_vars).path
+                == edcopilot_root
+            )
             # Check defaults
             assert config.auto_commit is True
             assert config.raven_api_url == "https://ravencolonial100-awcbdvabgze4c5cq.canadacentral-01.azurewebsites.net"
@@ -84,7 +102,13 @@ class TestLoadConfig:
 
             config = load_config(env_vars)
             assert config.content_definitions_root == content_definitions_root
-            assert config.edcopilot_root == edcopilot_root
+            # The raw field is gone; the resolver still honours the mixed-case
+            # environment variable that named the root.
+            assert not hasattr(config, "edcopilot_root")
+            assert (
+                resolve_edcopilot_root(config.content_root, env_vars).path
+                == edcopilot_root
+            )
 
     def test_boolean_coercion_from_string(self):
         """Test boolean fields coerce from string env vars."""
@@ -107,6 +131,8 @@ class TestLoadConfig:
                 }
                 config = load_config(env_vars)
                 assert config.auto_commit == expected, f"Failed for value: {val}"
+                # Every loaded config must lack the removed raw field.
+                assert not hasattr(config, "edcopilot_root")
 
     def test_extra_env_vars_ignored(self):
         """Test load_config ignores extra env vars."""
@@ -147,7 +173,8 @@ class TestConfigFieldNames:
             config = load_config(env_vars)
             # Required fields per spec
             assert hasattr(config, "content_definitions_root")
-            assert hasattr(config, "edcopilot_root")
+            # The raw root is not a config field: callers resolve it from the env.
+            assert not hasattr(config, "edcopilot_root")
             # Optional fields per spec
             assert hasattr(config, "auto_commit")
             assert hasattr(config, "raven_api_url")
@@ -246,7 +273,11 @@ class TestCWDResolution:
 
         config = load_config(os.environ)
         assert config.content_definitions_root == tmp_path
-        assert config.edcopilot_root == edcopilot
+        # The raw field is gone; the resolver still finds the env-named root.
+        assert not hasattr(config, "edcopilot_root")
+        assert (
+            resolve_edcopilot_root(config.content_root, os.environ).path == edcopilot
+        )
 
     def test_empty_env_var_falls_back_to_cwd(self, monkeypatch, tmp_path):
         """Test that empty env var falls back to CWD."""
@@ -338,3 +369,26 @@ class TestLogsDirField:
 
         config = load_config(os.environ)
         assert config.edcopilot_logs_dir == logs
+
+
+class TestEdcopilotRootRemoval:
+    """The removed raw edcopilot_root field must stay removed."""
+
+    def test_edcopilot_root_field_removed(self, tmp_path):
+        """Config no longer exposes the raw edcopilot_root field."""
+        (tmp_path / "systems").mkdir()
+        edcopilot = tmp_path / "edcopilot"
+        edcopilot.mkdir()
+
+        env_vars = {
+            "EDCG_CONTENT_DEFINITIONS_ROOT": str(tmp_path),
+            "EDCG_EDCOPILOT_ROOT": str(edcopilot),
+        }
+
+        config = load_config(env_vars)
+
+        # The raw root is deliberately not a Config field: the resolver is the
+        # only authority, so a reintroduced field must fail here.
+        assert not hasattr(config, "edcopilot_root"), (
+            "Config should no longer have an edcopilot_root field after removal"
+        )

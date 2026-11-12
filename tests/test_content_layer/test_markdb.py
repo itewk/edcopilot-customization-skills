@@ -9,7 +9,6 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -136,7 +135,8 @@ def mock_config(temp_edcopilot_root, monkeypatch):
     """Point the content layer at the temp EDCoPilot root (env-based config)."""
     monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(temp_edcopilot_root))
     monkeypatch.setenv("EDCG_AUTO_COMMIT", "true")
-    return SimpleNamespace(edcopilot_root=temp_edcopilot_root, auto_commit=True)
+    # Return just the path, since Config no longer has edcopilot_root field
+    return temp_edcopilot_root
 
 
 @pytest.fixture
@@ -144,10 +144,7 @@ def mock_config_with_markers(temp_edcopilot_root_with_markers, monkeypatch):
     """As mock_config, for the fixture whose content already carries markers."""
     monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(temp_edcopilot_root_with_markers))
     monkeypatch.setenv("EDCG_AUTO_COMMIT", "true")
-    return SimpleNamespace(
-        edcopilot_root=temp_edcopilot_root_with_markers,
-        auto_commit=True,
-    )
+    return temp_edcopilot_root_with_markers
 
 
 # ============================================================
@@ -172,7 +169,7 @@ class TestMarkdbAddTool:
         assert result["commit_hashes"][0] is not None
 
         # File should have UPDATEDB marker added
-        custom_file = mock_config.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+        custom_file = mock_config / "EDCoPilot.SpeechExtensions.Custom.txt"
         content = custom_file.read_text(encoding="utf-8")
 
         # Find the tag line and verify UPDATEDB is on the next line
@@ -201,7 +198,7 @@ class TestMarkdbAddTool:
         assert len(result["commit_hashes"]) == 1  # One commit for the whole pass
 
         # File should have UPDATEDB markers for both tags
-        custom_file = mock_config.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+        custom_file = mock_config / "EDCoPilot.SpeechExtensions.Custom.txt"
         content = custom_file.read_text(encoding="utf-8")
         lines = content.splitlines()
 
@@ -226,7 +223,7 @@ class TestMarkdbAddTool:
         assert "@SystemGreeting<~>Test System" in result["modified_tags"]
 
         # File should still have only one UPDATEDB marker
-        custom_file = mock_config_with_markers.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+        custom_file = mock_config_with_markers / "EDCoPilot.SpeechExtensions.Custom.txt"
         content = custom_file.read_text(encoding="utf-8")
         lines = content.splitlines()
 
@@ -245,7 +242,7 @@ class TestMarkdbAddTool:
 
     def test_markdb_add_creates_one_commit_for_all_tags(self, mock_config):
         """Two markers are one write and one commit."""
-        before = int(_git(mock_config.edcopilot_root, "rev-list", "--count", "HEAD"))
+        before = int(_git(mock_config, "rev-list", "--count", "HEAD"))
 
         result = markdb_add(
             tags=[
@@ -256,12 +253,12 @@ class TestMarkdbAddTool:
 
         assert len(result["commit_hashes"]) == 1
         assert result["commit_hashes"][0] is not None
-        after = int(_git(mock_config.edcopilot_root, "rev-list", "--count", "HEAD"))
+        after = int(_git(mock_config, "rev-list", "--count", "HEAD"))
         assert after == before + 1
 
-        subject = _git(mock_config.edcopilot_root, "log", "-1", "--format=%s").strip()
+        subject = _git(mock_config, "log", "-1", "--format=%s").strip()
         assert subject == "edcg: markdb add 2 tags"
-        body = _git(mock_config.edcopilot_root, "log", "-1", "--format=%B")
+        body = _git(mock_config, "log", "-1", "--format=%B")
         assert "@SystemGreeting<~>Test System" in body
         assert "@StationGreeting<~>Test System<~>Primary Station (ii-42)" in body
 
@@ -278,7 +275,7 @@ class TestMarkdbAddTool:
 
         assert len(result["commit_hashes"]) == 1
         body = _git(
-            mock_config.edcopilot_root, "log", "-1", result["commit_hashes"][0],
+            mock_config, "log", "-1", result["commit_hashes"][0],
             "--format=%B",
         )
         assert f"Co-authored-by: {co_author}" in body
@@ -296,11 +293,11 @@ class TestMarkdbAddTool:
     def test_markdb_add_keeps_tag_intact_without_final_newline(self, mock_config):
         """A tag as the last line must not fuse with the inserted marker."""
         custom_file = (
-            mock_config.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+            mock_config / "EDCoPilot.SpeechExtensions.Custom.txt"
         )
         custom_file.write_bytes(b"@SystemGreeting<~>Test System")
-        _git(mock_config.edcopilot_root, "add", "-A")
-        _git(mock_config.edcopilot_root, "commit", "-m", "no trailing newline")
+        _git(mock_config, "add", "-A")
+        _git(mock_config, "commit", "-m", "no trailing newline")
 
         result = markdb_add(
             tags=["@SystemGreeting<~>Test System"],
@@ -320,7 +317,7 @@ class TestMarkdbAddTool:
             tags=["@SystemGreeting<~>Test System"],
         )
 
-        custom_file = mock_config.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+        custom_file = mock_config / "EDCoPilot.SpeechExtensions.Custom.txt"
         content = custom_file.read_text(encoding="utf-8")
 
         # All original content should still be there
@@ -357,7 +354,7 @@ class TestMarkdbRemoveTool:
         assert len(result["commit_hashes"]) == 1
 
         # File should no longer have UPDATEDB marker for that tag
-        custom_file = mock_config_with_markers.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+        custom_file = mock_config_with_markers / "EDCoPilot.SpeechExtensions.Custom.txt"
         content = custom_file.read_text(encoding="utf-8")
         lines = content.splitlines()
 
@@ -383,7 +380,7 @@ class TestMarkdbRemoveTool:
         assert len(result["commit_hashes"]) == 1
 
         # File should no longer have UPDATEDB markers for those tags
-        custom_file = mock_config_with_markers.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+        custom_file = mock_config_with_markers / "EDCoPilot.SpeechExtensions.Custom.txt"
         content = custom_file.read_text(encoding="utf-8")
         lines = content.splitlines()
 
@@ -408,7 +405,7 @@ class TestMarkdbRemoveTool:
         assert "@SystemGreeting<~>Test System" in result["modified_tags"]
 
         # File should be unchanged (no marker was there to remove)
-        custom_file = mock_config.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+        custom_file = mock_config / "EDCoPilot.SpeechExtensions.Custom.txt"
         content = custom_file.read_text(encoding="utf-8")
         lines = content.splitlines()
 
@@ -421,7 +418,7 @@ class TestMarkdbRemoveTool:
     def test_markdb_remove_creates_one_commit_for_all_tags(self, mock_config_with_markers):
         """Two marker removals are one write and one commit."""
         before = int(
-            _git(mock_config_with_markers.edcopilot_root, "rev-list", "--count", "HEAD")
+            _git(mock_config_with_markers, "rev-list", "--count", "HEAD")
         )
 
         result = markdb_remove(
@@ -433,12 +430,12 @@ class TestMarkdbRemoveTool:
 
         assert len(result["commit_hashes"]) == 1
         after = int(
-            _git(mock_config_with_markers.edcopilot_root, "rev-list", "--count", "HEAD")
+            _git(mock_config_with_markers, "rev-list", "--count", "HEAD")
         )
         assert after == before + 1
 
         subject = _git(
-            mock_config_with_markers.edcopilot_root, "log", "-1", "--format=%s"
+            mock_config_with_markers, "log", "-1", "--format=%s"
         ).strip()
         assert subject == "edcg: markdb remove 2 tags"
 
@@ -452,7 +449,7 @@ class TestMarkdbRemoveTool:
 
         assert len(result["commit_hashes"]) == 1
         body = _git(
-            mock_config_with_markers.edcopilot_root,
+            mock_config_with_markers,
             "log", "-1", result["commit_hashes"][0], "--format=%B",
         )
         assert f"Co-authored-by: {co_author}" in body
@@ -468,7 +465,7 @@ class TestMarkdbRoundTrip:
     def test_add_then_remove_preserves_content(self, mock_config):
         """Test that add then remove preserves all original content."""
         # Capture original content
-        custom_file = mock_config.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+        custom_file = mock_config / "EDCoPilot.SpeechExtensions.Custom.txt"
         original_content = custom_file.read_text(encoding="utf-8")
 
         tags = ["@SystemGreeting<~>Test System", "@StationGreeting<~>Test System<~>Primary Station (ii-42)"]
@@ -491,7 +488,7 @@ class TestMarkdbRoundTrip:
     def test_remove_then_add_preserves_content(self, mock_config_with_markers):
         """Test that remove then add preserves all original content."""
         # Capture original content
-        custom_file = mock_config_with_markers.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+        custom_file = mock_config_with_markers / "EDCoPilot.SpeechExtensions.Custom.txt"
         original_content = custom_file.read_text(encoding="utf-8")
 
         tags = ["@SystemGreeting<~>Test System", "@StationGreeting<~>Test System<~>Primary Station (ii-42)"]
@@ -543,7 +540,7 @@ class TestMarkdbEdgeCases:
         """Test that markdb_add preserves CRLF line endings."""
         markdb_add(tags=["@SystemGreeting<~>Test System"])
 
-        custom_file = mock_config.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+        custom_file = mock_config / "EDCoPilot.SpeechExtensions.Custom.txt"
         raw_bytes = custom_file.read_bytes()
 
         # Should use CRLF line endings
@@ -553,7 +550,7 @@ class TestMarkdbEdgeCases:
         """Test that markdb_remove preserves CRLF line endings."""
         markdb_remove(tags=["@SystemGreeting<~>Test System"])
 
-        custom_file = mock_config_with_markers.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+        custom_file = mock_config_with_markers / "EDCoPilot.SpeechExtensions.Custom.txt"
         raw_bytes = custom_file.read_bytes()
 
         # Should use CRLF line endings

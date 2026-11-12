@@ -112,10 +112,8 @@ class TestSaveDefinitionTool:
         config = Config(
             content_definitions_root=temp_content_definitions,
             content_root=temp_content_definitions,
-            edcopilot_root=temp_content_definitions / "edcopilot_root",
             auto_commit=True,
         )
-        config.edcopilot_root.mkdir(parents=True, exist_ok=True)
         return config
 
     def test_save_definition_creates_files_and_commits(self, mock_config):

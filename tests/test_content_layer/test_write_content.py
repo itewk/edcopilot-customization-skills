@@ -9,7 +9,6 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -91,20 +90,16 @@ class TestWriteContentTool:
         """Point the content layer at the temp EDCoPilot root (env-based config)."""
         monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(temp_edcopilot_root))
         monkeypatch.setenv("EDCG_AUTO_COMMIT", "true")
-        return SimpleNamespace(
-            edcopilot_root=temp_edcopilot_root,
-            auto_commit=True,
-        )
+        # Return just the path, since Config no longer has edcopilot_root field
+        return temp_edcopilot_root
 
     @pytest.fixture
     def mock_config_no_git(self, temp_edcopilot_root_no_git, monkeypatch):
         """As mock_config, for a root that is not a git repository."""
         monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(temp_edcopilot_root_no_git))
         monkeypatch.setenv("EDCG_AUTO_COMMIT", "true")
-        return SimpleNamespace(
-            edcopilot_root=temp_edcopilot_root_no_git,
-            auto_commit=True,
-        )
+        # Return just the path, since Config no longer has edcopilot_root field
+        return temp_edcopilot_root_no_git
 
     def test_write_content_appends_to_file(self, mock_config):
         """Test that write_content appends content to the custom file."""
@@ -119,7 +114,7 @@ class TestWriteContentTool:
         assert result.file_path.name == "EDCoPilot.SpeechExtensions.Custom.txt"
 
         # File should exist and contain both old and new content
-        custom_file = mock_config.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+        custom_file = mock_config / "EDCoPilot.SpeechExtensions.Custom.txt"
         content = custom_file.read_text(encoding="utf-8")
 
         # Original content should still be there
@@ -143,7 +138,7 @@ class TestWriteContentTool:
             content_block=SAMPLE_CONTENT_BLOCK,
         )
 
-        custom_file = mock_config.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+        custom_file = mock_config / "EDCoPilot.SpeechExtensions.Custom.txt"
         content = custom_file.read_text(encoding="utf-8")
 
         import re
@@ -170,7 +165,7 @@ class TestWriteContentTool:
             content_block=SAMPLE_CONTENT_BLOCK,
         )
 
-        custom_file = mock_config.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+        custom_file = mock_config / "EDCoPilot.SpeechExtensions.Custom.txt"
         content = custom_file.read_text(encoding="utf-8")
 
         # Should have a provenance comment for the new content
@@ -194,7 +189,7 @@ class TestWriteContentTool:
             content_block=SAMPLE_CONTENT_BLOCK,
         )
 
-        custom_file = mock_config.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+        custom_file = mock_config / "EDCoPilot.SpeechExtensions.Custom.txt"
         raw_bytes = custom_file.read_bytes()
 
         # Should use CRLF line endings
@@ -219,7 +214,7 @@ class TestWriteContentTool:
         # Check commit message format
         log = subprocess.run(
             ["git", "log", "-1", "--format=%s"],
-            cwd=mock_config.edcopilot_root,
+            cwd=mock_config,
             capture_output=True,
             encoding="utf-8",
             check=True,
@@ -231,7 +226,7 @@ class TestWriteContentTool:
     def test_write_content_commits_staged_edits_with_empty_block(self, mock_config):
         """An empty block is the rewrite-only path: commit what is staged."""
         custom_file = (
-            mock_config.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+            mock_config / "EDCoPilot.SpeechExtensions.Custom.txt"
         )
         custom_file.write_text(
             custom_file.read_text(encoding="utf-8")
@@ -252,7 +247,7 @@ class TestWriteContentTool:
         assert staged.count("<!-- provenance:") == 1
         subject = subprocess.run(
             ["git", "log", "-1", "--format=%s"],
-            cwd=mock_config.edcopilot_root,
+            cwd=mock_config,
             capture_output=True,
             encoding="utf-8",
             check=True,
@@ -260,7 +255,7 @@ class TestWriteContentTool:
         assert subject == "edcg: content Existing System"
         changed = subprocess.run(
             ["git", "show", "--format=", "--name-only", "HEAD"],
-            cwd=mock_config.edcopilot_root,
+            cwd=mock_config,
             capture_output=True,
             encoding="utf-8",
             check=True,
@@ -271,7 +266,7 @@ class TestWriteContentTool:
     def test_write_content_empty_block_with_no_changes_makes_no_commit(self, mock_config):
         before = subprocess.run(
             ["git", "rev-parse", "HEAD"],
-            cwd=mock_config.edcopilot_root,
+            cwd=mock_config,
             capture_output=True,
             encoding="utf-8",
             check=True,
@@ -285,7 +280,7 @@ class TestWriteContentTool:
         assert result.commit_hash is None
         after = subprocess.run(
             ["git", "rev-parse", "HEAD"],
-            cwd=mock_config.edcopilot_root,
+            cwd=mock_config,
             capture_output=True,
             encoding="utf-8",
             check=True,
@@ -295,7 +290,7 @@ class TestWriteContentTool:
     def test_write_content_treats_none_block_as_empty(self, mock_config):
         """A null content_block from a client means 'commit staged edits'."""
         custom_file = (
-            mock_config.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+            mock_config / "EDCoPilot.SpeechExtensions.Custom.txt"
         )
         custom_file.write_text(
             custom_file.read_text(encoding="utf-8") + "\n[<Voice>] A staged line.\n",
@@ -325,7 +320,7 @@ class TestWriteContentTool:
 
         log = subprocess.run(
             ["git", "log", "-1", "--format=%B"],
-            cwd=mock_config.edcopilot_root,
+            cwd=mock_config,
             capture_output=True,
             encoding="utf-8",
             check=True,
@@ -344,7 +339,7 @@ class TestWriteContentTool:
         assert result.commit_hash is None
 
         # But file should still be written
-        custom_file = mock_config_no_git.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+        custom_file = mock_config_no_git / "EDCoPilot.SpeechExtensions.Custom.txt"
         content = custom_file.read_text(encoding="utf-8")
         assert "@SystemGreeting<~>Test System" in content
 
@@ -358,7 +353,7 @@ class TestWriteContentTool:
 
         log = subprocess.run(
             ["git", "log", "-1", "--format=%s"],
-            cwd=mock_config.edcopilot_root,
+            cwd=mock_config,
             capture_output=True,
             encoding="utf-8",
             check=True,
@@ -376,15 +371,15 @@ class TestWriteContentTool:
 
         assert isinstance(result, WriteResult)
         assert result.file_path is not None
-        assert result.file_path == mock_config.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+        assert result.file_path == mock_config / "EDCoPilot.SpeechExtensions.Custom.txt"
 
     def test_write_content_handles_empty_file(self, mock_config):
         """Test write_content works when the target file is empty."""
         # Clear the file
-        custom_file = mock_config.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+        custom_file = mock_config / "EDCoPilot.SpeechExtensions.Custom.txt"
         custom_file.write_text("", encoding="utf-8", newline="\r\n")
-        subprocess.run(["git", "add", "EDCoPilot.SpeechExtensions.Custom.txt"], cwd=mock_config.edcopilot_root, check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Clear file"], cwd=mock_config.edcopilot_root, check=True, capture_output=True)
+        subprocess.run(["git", "add", "EDCoPilot.SpeechExtensions.Custom.txt"], cwd=mock_config, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Clear file"], cwd=mock_config, check=True, capture_output=True)
 
         result = write_content(
             system_name="Test System",
@@ -410,7 +405,7 @@ class TestWriteContentTool:
             content_block="@SystemGreeting<~>System B\n[<Voice>] Hello B.\n",
         )
 
-        custom_file = mock_config.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+        custom_file = mock_config / "EDCoPilot.SpeechExtensions.Custom.txt"
         content = custom_file.read_text(encoding="utf-8")
 
         # Both should be present
@@ -426,7 +421,7 @@ class TestWriteContentTool:
             content_block=SAMPLE_CONTENT_BLOCK,
         )
 
-        custom_file = mock_config.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+        custom_file = mock_config / "EDCoPilot.SpeechExtensions.Custom.txt"
         content = custom_file.read_text(encoding="utf-8")
 
         # Find the last provenance comment
@@ -448,7 +443,7 @@ class TestWriteContentTool:
             model="TestModel-1.0",  # Pass model parameter
         )
 
-        custom_file = mock_config.edcopilot_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+        custom_file = mock_config / "EDCoPilot.SpeechExtensions.Custom.txt"
         content = custom_file.read_text(encoding="utf-8")
 
         import re
@@ -476,7 +471,7 @@ class TestWriteContentTool:
             # GitRepo should have been instantiated with edcopilot_root
             mock_git_repo_class.assert_called_once()
             call_args = mock_git_repo_class.call_args[0][0]
-            assert call_args == mock_config.edcopilot_root
+            assert call_args == mock_config
             # Verify commit was called
             mock_repo.commit.assert_called_once()
             assert result.commit_hash == "abc12345"
