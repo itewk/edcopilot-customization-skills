@@ -23,6 +23,19 @@ advisory, and the agent's discipline carries them.
 
 ## Setup
 
+### Read this when
+
+Load a reference for the job in front of you; each is the single home for its
+subject.
+
+| Read this | When |
+|---|---|
+| [`references/workflow-details.md`](references/workflow-details.md) | Setup: environment variables and root resolution; then the marker cycle, branch mechanics, git and commit rules |
+| [`references/new-system-interview.md`](references/new-system-interview.md) | A system with no definition yet: the six-phase interview |
+| [`references/update-interview.md`](references/update-interview.md) | A system that already has a definition: the seven-phase update |
+| [`references/writing-brief.md`](references/writing-brief.md) | Before writing content: exact tag lines, section sizes, voices, tokens and filters |
+| [`references/rules.md`](references/rules.md) | Rule layers, precedence and bound semantics — before changing a rule |
+
 1. **Check the environment.** Run `python <skill-dir>/scripts/edcg.py doctor`.
    It prints one `OK` or `FAIL` line per check (Python version, `httpx`,
    GitPython, the `git` binary, git identity, content root, EDCoPilot root).
@@ -64,6 +77,13 @@ advisory, and the agent's discipline carries them.
 
 Run these in order. Every step applies to both modes; where the new-system and update paths differ, the step says so.
 
+**Feature branch (optional, both modes).** Before the interview, offer once
+whether to do the work on a feature branch. Run `edcg.py branch start
+<description>` only if the user accepts; otherwise stay on the current branch
+and say so. Never create a branch the user did not ask for. Branch mechanics,
+and how the active branch is read back from git, are in
+[`references/workflow-details.md`](references/workflow-details.md).
+
 EDCoPilot must be closed whenever a step writes the custom file or changes
 markers (steps 10, 12 and 16). Ask the user to close it, and to restart it when
 a step calls for a restart.
@@ -102,27 +122,24 @@ process, so a new session resumes from the repository alone.
 
 ## New system
 
-Start with `edcg.py gather-facts --system <name>`. When Raven has no entry yet,
-skip gathering and start the interview from the user's description; the
-interview creates the identity. Then run the six-phase interview one phase at a
-time, waiting for answers: high-level concept, station and character design,
-plot threads, artifacts (dossier and rules TOML), the validation loop, and
-save. Ask once, before the artifacts, how many examples each section should
-keep, then write `[content.bounds]` from the answer. Full text:
-[`references/new-system-interview.md`](references/new-system-interview.md).
+The route is Process steps 1–10: resume, gather facts, the six-phase
+interview, validate and save the definition, preview, the writing brief, then
+write, validate and commit the content. When Raven has no entry yet, skip
+gathering and start the interview from the user's description; the interview
+creates the identity. Ask once, before the artifacts, how many examples each
+section should keep, then write `[content.bounds]` from the answer.
 
+Interview: [`references/new-system-interview.md`](references/new-system-interview.md).
 The dossier structure is [`assets/dossier-template.md`](assets/dossier-template.md) — the structure validation enforces.
 
 ## Update an existing system
 
-Refresh the facts, then invalidate what is no longer true, then offer variety,
-then make room for new lines, and only then update the artifacts, validate and
-save. The seven-phase order is fixed; phase 2B (reconcile existing content) runs
-between the lore update and the station update. Use
-`edcg.py get-content --system <name>` to read the exact lines before editing, and
-`edcg.py rewrite-tag` for every removal, replacement or addition. Full text:
-[`references/update-interview.md`](references/update-interview.md).
+The route is Process steps 1–10: refresh the facts, invalidate what is no longer
+true, offer variety, make room for new lines, then update the artifacts,
+validate and save. The seven-phase order is fixed; phase 2B (reconcile existing
+content) runs between the lore update and the station update.
 
+Interview: [`references/update-interview.md`](references/update-interview.md).
 `edcg.py update-scan` is the refresh command, for one system or many: it
 reports every system's deltas, so run it whenever facts may have moved. Process
 the changed systems one at a time and never batch validation or save across
@@ -130,33 +147,18 @@ them.
 
 ## Advisory gates
 
-None of these gates refuses; ask, and treat the answer as the instruction:
-
-- **Preview** — after the definition is saved, offer a small representative
-  sample (about 8-10 lines) before the full generation. If the user declines,
-  write the full block. If they accept, show the sample, take at most one round
-  of changes, then continue.
-- **Review choice** — ask whether to mark the content for database update as
-  soon as it is written, or to pause for a static or live review first. For a
-  static review the user reads the file or diff; for a live review they restart
-  EDCoPilot and listen. Live review is reliable for new tags; an updated
-  existing tag may not refresh until `UPDATEDB` is added, so offer static review
-  as the reliable path.
-- **Restart** — after `markdb add`, ask the user to restart EDCoPilot. Confirm
-  the restart before running `edcg.py check-logs`.
-- **Log check** — show the per-tag report. A failed tag is the user's call: fix
-  the content and repeat the marker cycle, or accept the failure and continue.
-  Do not remove markers behind their back and do not hide a failure.
-- **In-game test and upload** — after the log check, ask the user to test the
-  content in game and upload the database from inside EDCoPilot. Only after they
-  confirm, clear the markers.
+None of these gates refuses; ask, and treat the answer as the instruction. Each
+gate is a Process step: **preview** (6), **review choice** (11), **restart**
+(13), **log check** (14) and **in-game test and upload** (15). The step carries
+what to offer; the operational detail — what a static review can and cannot
+show, what a failed tag means, and how the progress table is built — is in
+[`references/workflow-details.md`](references/workflow-details.md).
 
 Derive the state before each gate rather than assuming it: `edcg.py branch
 status` for the active branch, `edcg.py get-content --system <name>` for authored
-tags and their counts, the custom file for `UPDATEDB` markers, and
-`systems/` for the dossier and rules files. Read them together so the user can
-see where the cycle is.
-Details: [`references/workflow-details.md`](references/workflow-details.md).
+tags and their counts, the custom file for `UPDATEDB` markers, and `systems/`
+for the dossier and rules files. Read them together so the user can see where
+the cycle is.
 
 ## Commit conventions
 

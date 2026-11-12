@@ -1,7 +1,6 @@
 """Tests for Git operations wrapper."""
 
 import shutil
-import subprocess
 import tempfile
 import warnings
 from pathlib import Path
@@ -10,13 +9,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from edcg.repo.gitrepo import GitRepo, slugify_branch_name
-
-
-def _git(repo_path: Path, *args: str) -> str:
-    """Run git in ``repo_path``; the wrapper no longer carries a test runner."""
-    return subprocess.run(
-        ["git", *args], cwd=repo_path, check=True, capture_output=True, text=True
-    ).stdout
+from support import run_git as _git
 
 
 class TestGitRepoInit:

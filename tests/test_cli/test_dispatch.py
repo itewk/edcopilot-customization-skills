@@ -909,6 +909,3 @@ def test_branch_review_keeps_the_pinned_report_sections(monkeypatch, tmp_path, c
     assert report.count("Files changed:") == 2
     assert report.count("Insertions:") == 2
     assert report.count("Deletions:") == 2
-
-
-

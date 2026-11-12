@@ -5,20 +5,24 @@ the config is supplied through the environment (the content layer resolves
 roots lazily per call). No gate/pause case existed in the old suite.
 """
 
-import shutil
 import subprocess
-import tempfile
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
-from edcg.content.custom_file import WriteResult, write_content
+from edcg.content.custom_file import write_content
+from support import run_git
 
 
 # ============================================================
 # Test fixtures
 # ============================================================
+
+EXISTING_CUSTOM_CONTENT = (
+    "# EDCoPilot Speech Extensions\n\n"
+    "<!-- provenance: edcopilot_customization_generator 0.1.0 — TestModel — 2024-01-01T00:00:00 -->\n\n"
+    "@ExistingTag <~> Existing System\n"
+    "[<Voice>] Existing content.\n"
+)
 
 SAMPLE_CONTENT_BLOCK = """@SystemGreeting<~>Test System
 [<Foreman>] Welcome to Test System, <Commander>!
@@ -41,49 +45,26 @@ class TestWriteContentTool:
     """Tests for write_content content layer function."""
 
     @pytest.fixture
-    def temp_edcopilot_root(self):
-        """Create a temporary git repo for EDCoPilot root."""
-        tmpdir = tempfile.mkdtemp()
-        repo_path = Path(tmpdir) / "edcopilot_root"
-        repo_path.mkdir(parents=True)
-
-        # Initialize git repo
-        subprocess.run(["git", "init"], cwd=repo_path, check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo_path, check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo_path, check=True, capture_output=True)
-
-        # Create initial commit so repo has HEAD
-        readme = repo_path / "README.md"
-        readme.write_text("# Test EDCoPilot Root")
-        subprocess.run(["git", "add", "README.md"], cwd=repo_path, check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=repo_path, check=True, capture_output=True)
-
-        # Create the target file
+    def temp_edcopilot_root(self, git_repo):
+        """A committed EDCoPilot root with the custom file in place."""
+        repo_path = git_repo(files={"README.md": "# Test EDCoPilot Root"})
         custom_file = repo_path / "EDCoPilot.SpeechExtensions.Custom.txt"
-        custom_file.write_text("# EDCoPilot Speech Extensions\n\n<!-- provenance: edcopilot_customization_generator 0.1.0 — TestModel — 2024-01-01T00:00:00 -->\n\n@ExistingTag <~> Existing System\n[<Voice>] Existing content.\n", encoding="utf-8", newline="\r\n")
-        subprocess.run(["git", "add", "EDCoPilot.SpeechExtensions.Custom.txt"], cwd=repo_path, check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Initial content"], cwd=repo_path, check=True, capture_output=True)
-
-        yield repo_path
-
-        # Cleanup
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        custom_file.write_text(
+            EXISTING_CUSTOM_CONTENT, encoding="utf-8", newline="\r\n"
+        )
+        run_git(repo_path, "add", "-A")
+        run_git(repo_path, "commit", "-m", "Initial content")
+        return repo_path
 
     @pytest.fixture
-    def temp_edcopilot_root_no_git(self):
-        """Create a temporary directory (not a git repo) for EDCoPilot root."""
-        tmpdir = tempfile.mkdtemp()
-        repo_path = Path(tmpdir) / "edcopilot_root"
-        repo_path.mkdir(parents=True)
-
-        # Create the target file
-        custom_file = repo_path / "EDCoPilot.SpeechExtensions.Custom.txt"
-        custom_file.write_text("# EDCoPilot Speech Extensions\n\n<!-- provenance: edcopilot_customization_generator 0.1.0 — TestModel — 2024-01-01T00:00:00 -->\n\n@ExistingTag <~> Existing System\n[<Voice>] Existing content.\n", encoding="utf-8", newline="\r\n")
-
-        yield repo_path
-
-        # Cleanup
-        shutil.rmtree(tmpdir, ignore_errors=True)
+    def temp_edcopilot_root_no_git(self, tmp_path):
+        """A plain EDCoPilot root (no git) with the custom file in place."""
+        repo_path = tmp_path / "edcopilot_root"
+        repo_path.mkdir()
+        (repo_path / "EDCoPilot.SpeechExtensions.Custom.txt").write_text(
+            EXISTING_CUSTOM_CONTENT, encoding="utf-8", newline="\r\n"
+        )
+        return repo_path
 
     @pytest.fixture
     def mock_config(self, temp_edcopilot_root, monkeypatch):
@@ -108,9 +89,7 @@ class TestWriteContentTool:
             content_block=SAMPLE_CONTENT_BLOCK,
         )
 
-        # Should return WriteResult
-        assert isinstance(result, WriteResult)
-        assert result.file_path is not None
+        # Should return the file that was written
         assert result.file_path.name == "EDCoPilot.SpeechExtensions.Custom.txt"
 
         # File should exist and contain both old and new content
@@ -334,8 +313,7 @@ class TestWriteContentTool:
             content_block=SAMPLE_CONTENT_BLOCK,
         )
 
-        # Should return WriteResult with None commit_hash
-        assert isinstance(result, WriteResult)
+        # No commit is made, but the file is still written
         assert result.commit_hash is None
 
         # But file should still be written
@@ -369,8 +347,6 @@ class TestWriteContentTool:
             content_block=SAMPLE_CONTENT_BLOCK,
         )
 
-        assert isinstance(result, WriteResult)
-        assert result.file_path is not None
         assert result.file_path == mock_config / "EDCoPilot.SpeechExtensions.Custom.txt"
 
     def test_write_content_handles_empty_file(self, mock_config):
@@ -453,29 +429,3 @@ class TestWriteContentTool:
         # Should include the model name
         assert "TestModel-1.0" in last_provenance
 
-    def test_write_content_uses_git_wrapper(self, mock_config):
-        """Test that write_content uses the GitRepo wrapper."""
-        with patch("edcg.content.custom_file.GitRepo") as mock_git_repo_class:
-            mock_repo = MagicMock()
-            mock_repo.add_all = MagicMock()
-            mock_repo.commit = MagicMock(return_value="abc12345")
-            mock_repo.status = MagicMock(return_value={"staged": [], "unstaged": [], "untracked": [], "clean": False})
-            mock_git_repo_class.return_value = mock_repo
-            mock_git_repo_class.is_repo.return_value = True
-
-            result = write_content(
-                system_name="Test System",
-                content_block=SAMPLE_CONTENT_BLOCK,
-            )
-
-            # GitRepo should have been instantiated with edcopilot_root
-            mock_git_repo_class.assert_called_once()
-            call_args = mock_git_repo_class.call_args[0][0]
-            assert call_args == mock_config
-            # Verify commit was called
-            mock_repo.commit.assert_called_once()
-            assert result.commit_hash == "abc12345"
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

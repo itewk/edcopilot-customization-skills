@@ -1,11 +1,11 @@
 """Tests for branch orchestration - ported from test_tool_branch.py."""
 
-import subprocess
-import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
+
+from support import commit_all, init_repo, run_git as _git
 
 # Import the functions directly from our implementation (the new module paths)
 from edcg.repo.branches import (
@@ -111,19 +111,10 @@ def test_finalize_push_with_nothing_to_attempt_reports_nothing_to_push(branch_pa
     assert result.push_status == "nothing_to_push"
 
 
-def _git(repo: Path, *args: str) -> str:
-    return subprocess.run(
-        ["git", *args], cwd=repo, check=True, capture_output=True, text=True
-    ).stdout
-
-
 def _init_repo_with_commit(root: Path, filename: str, content: str = "x\n") -> None:
-    GitRepo.init(root).close()
-    _git(root, "config", "user.name", "Push Test")
-    _git(root, "config", "user.email", "push@example.com")
+    init_repo(root)
     (root / filename).write_text(content, encoding="utf-8")
-    _git(root, "add", "-A")
-    _git(root, "commit", "-m", "initial")
+    commit_all(root, "initial")
 
 
 def _start_and_commit(cfg) -> str:

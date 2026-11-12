@@ -24,10 +24,9 @@ from edcg.rules.validation import (
     load_kinds,
     parse_content,
     PROVENANCE_RE,
+    RULE_DATA_DIR,
 )
 
-# The rule data ships beside the engine as package data.
-RULE_DATA_DIR = Path(__file__).resolve().parents[2] / "skills" / "edcopilot-system-content" / "scripts" / "edcg" / "rules" / "data"
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
 

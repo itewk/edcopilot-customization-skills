@@ -5,13 +5,12 @@ the config is supplied through the environment (the content layer resolves
 roots lazily per call). No gate/pause case existed in the old suite.
 """
 
-import subprocess
 from pathlib import Path
 
 import pytest
 
 from edcg.content.rewrite import get_system_content, rewrite_tag
-
+from support import run_git as _git
 
 SYSTEM = "Test System"
 TAG = f"@StationChatter<~>{SYSTEM}<~>Test Station (ii-42)"
@@ -37,26 +36,11 @@ Greeting three.
 """
 
 
-def _git(repo: Path, *args: str) -> str:
-    result = subprocess.run(
-        ["git", *args], cwd=repo, check=True, capture_output=True,
-        text=True, encoding="utf-8",
-    )
-    return result.stdout
-
-
 @pytest.fixture
-def workspace(tmp_path: Path, monkeypatch):
+def workspace(tmp_path: Path, monkeypatch, git_repo):
     content_root = tmp_path / "content"
     (content_root / "systems").mkdir(parents=True)
-    runtime = tmp_path / "runtime"
-    runtime.mkdir()
-    _git(runtime, "init")
-    _git(runtime, "config", "user.email", "t@example.com")
-    _git(runtime, "config", "user.name", "T")
-    (runtime / "README.md").write_text("x", encoding="utf-8")
-    _git(runtime, "add", "-A")
-    _git(runtime, "commit", "-m", "init")
+    runtime = git_repo(files={"README.md": "x"})
 
     custom = runtime / "EDCoPilot.SpeechExtensions.Custom.txt"
     custom.write_text(CONTENT, encoding="utf-8", newline="\r\n")
@@ -64,7 +48,7 @@ def workspace(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(content_root))
     monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(runtime))
     monkeypatch.setenv("EDCG_AUTO_COMMIT", "true")
-    yield {"runtime": runtime, "custom": custom}
+    return {"runtime": runtime, "custom": custom}
 
 
 def test_get_system_content_reports_lines_and_bounds(workspace):

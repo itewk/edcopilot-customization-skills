@@ -9,10 +9,11 @@ then wait for the answers before writing a file or moving on. The human answers
 the interview; the agent proposes, writes and validates. The agent **must not invent facts** to fill a gap: if a source is unavailable, record that and let
 the human decide whether the remaining evidence is enough.
 
-Before Phase 1, ask once whether to do the work on a feature branch. This offer
-is optional; if the user accepts, run `edcg.py branch start <description>`
-before producing artifacts. If they decline, stay where you are and say so.
-Never create a branch without being asked.
+Before any artifact work, settle the optional feature-branch decision that the
+skill spine's Process section describes: if the user accepts, run
+`edcg.py branch start <description>`; if they decline, stay where you are and
+say so. Never create a branch without being asked. Branch mechanics:
+[`workflow-details.md`](workflow-details.md).
 
 ## FACTUAL BASELINE (from live data)
 

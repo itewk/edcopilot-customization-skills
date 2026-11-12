@@ -549,6 +549,24 @@ class TestBodyShape:
         assert "systems/" in text
         assert "audit-derived" not in lowered
 
+    def test_branch_offer_is_shared_and_early(self):
+        """One branch decision, in the spine, before either workflow starts.
+
+        The offer used to live only in the new-system interview, so an update
+        could reach the interview without ever hearing about branches. It is one
+        spine rule now, and it runs before the interview step in both modes.
+        """
+        _, body = _body()
+        text = " ".join(" ".join(body).split())
+        process = text[text.index("## Process") : text.index("## Resume rule")]
+        assert "Feature branch (optional, both modes)." in process
+        assert "edcg.py branch start" in process
+        assert "only if the user accepts" in process
+        assert "Never create a branch the user did not ask for" in process
+        assert process.index("Feature branch (optional, both modes).") < process.index(
+            "**Interview.**"
+        )
+
     def test_scripts_pause_for_gates_but_refuse_invalid_operations(self):
         """No gate is enforced, but impossible operations still fail cleanly."""
         _, body = _body()

@@ -8,6 +8,11 @@ Refresh, then invalidate, then offer variety, then make room. The seven phases
 are fixed: ask in order and wait for the answers. The agent **must not invent
 facts** to fill a gap.
 
+Before Phase 1, settle the optional feature-branch decision once with the user,
+as the skill spine's Process section describes: run
+`edcg.py branch start <description>` only on their yes, and stay on the current
+branch otherwise. Branch mechanics: [`workflow-details.md`](workflow-details.md).
+
 ## PHASE 1: REVIEW FACTUAL CHANGES
 
 Run `edcg.py update-scan` first and read this system's entry. The scan computes

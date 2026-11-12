@@ -1,0 +1,120 @@
+{
+  "version": 1,
+  "skill": "edcopilot-system-content",
+  "method": "description optimization: realistic positive prompts plus hard near-misses",
+  "live_run": {
+    "performed": "pending_live_run",
+    "agent": null,
+    "note": "Pending: feed each prompt to the target agent and record whether edcopilot-system-content loaded. Set performed to true, name the agent, and add one {id, fired} result per case. The tests reject a completed run that contains a miss or an over-trigger, and the description is revised only when such a run shows one.",
+    "results": []
+  },
+  "static_run": {
+    "performed": true,
+    "version": 1,
+    "graded": 20,
+    "failed": [],
+    "method": "Vocabulary and intent grading of every prompt against the frontmatter description. This is the deterministic half of the evaluation, not agent activation."
+  },
+  "cases": [
+    {
+      "id": "new-system-greetings",
+      "should_trigger": true,
+      "prompt": "Write the EDCoPilot greetings and chatter for a new colonisation system in Elite Dangerous."
+    },
+    {
+      "id": "new-station-extensions",
+      "should_trigger": true,
+      "prompt": "Add speech extensions for a new station in my colonised system."
+    },
+    {
+      "id": "refresh-broadcast",
+      "should_trigger": true,
+      "prompt": "Refresh the EDCoPilot broadcast lines for an existing colonisation system after the last game update."
+    },
+    {
+      "id": "stale-station-facts",
+      "should_trigger": true,
+      "prompt": "The station facts for our Coriolis are out of date; update the EDCoPilot content from the new Raven data."
+    },
+    {
+      "id": "draft-station-fact",
+      "should_trigger": true,
+      "prompt": "Draft a StationFact page for the new outpost in our colonisation system."
+    },
+    {
+      "id": "dossier-and-rules",
+      "should_trigger": true,
+      "prompt": "We colonised a system; set up the dossier and rules and write the greeting lines."
+    },
+    {
+      "id": "station-chatter-refresh",
+      "should_trigger": true,
+      "prompt": "Update the EDCoPilot station chatter for our colonisation system's new outpost."
+    },
+    {
+      "id": "new-broadcast-voices",
+      "should_trigger": true,
+      "prompt": "Add a SystemBroadcast with a few voices for our new colonisation system in Elite Dangerous."
+    },
+    {
+      "id": "tags-after-rename",
+      "should_trigger": true,
+      "prompt": "My EDCoPilot speech extensions fail validation after a rename; fix the tags and rewrite the greetings."
+    },
+    {
+      "id": "settlement-greeting-set",
+      "should_trigger": true,
+      "prompt": "Author the station greeting set for a newly completed settlement in our colonised system."
+    },
+    {
+      "id": "near-miss-keybinds",
+      "should_trigger": false,
+      "prompt": "Configure EDCoPilot keybinds for the SRV."
+    },
+    {
+      "id": "near-miss-install",
+      "should_trigger": false,
+      "prompt": "How do I install EDCoPilot on a second PC?"
+    },
+    {
+      "id": "near-miss-discord-greeting",
+      "should_trigger": false,
+      "prompt": "Write a Python greeting function for my Discord bot."
+    },
+    {
+      "id": "near-miss-ship-loadout",
+      "should_trigger": false,
+      "prompt": "Update my Elite Dangerous ship loadout for combat."
+    },
+    {
+      "id": "near-miss-patch-notes",
+      "should_trigger": false,
+      "prompt": "Summarise the Elite Dangerous patch notes."
+    },
+    {
+      "id": "near-miss-colony-story",
+      "should_trigger": false,
+      "prompt": "Write a short story about a colonisation ship."
+    },
+    {
+      "id": "near-miss-blog-grammar",
+      "should_trigger": false,
+      "prompt": "Fix the grammar in this blog post about space colonisation."
+    },
+    {
+      "id": "near-miss-proofread-chatter",
+      "should_trigger": false,
+      "prompt": "Proofread the grammar in our EDCoPilot chatter file."
+    },
+    {
+      "id": "near-miss-rename-dossiers",
+      "should_trigger": false,
+      "prompt": "Rename the EDCoPilot dossier files to match the new folder scheme."
+    },
+    {
+      "id": "near-miss-show-diff",
+      "should_trigger": false,
+      "prompt": "Show me the diff of the EDCoPilot broadcast file."
+    }
+  ]
+}
