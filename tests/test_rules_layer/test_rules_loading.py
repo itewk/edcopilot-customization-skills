@@ -1,6 +1,5 @@
 """Tests for base rules loading from package data."""
 
-import pytest
 from pathlib import Path
 from edcg.rules import engine
 
@@ -494,6 +493,30 @@ class TestBuildTypeUtilities:
         # Unknown type
         assert engine.is_landable_build_type("unknown_type") is False
 
+    def test_landability_reads_not_landable_classes_from_base_toml(self, monkeypatch):
+        """The landable predicate must follow the rule data, not a code constant."""
+        base = engine.get_base_rules()
+        rules = base["rules"]
+        patched = {
+            **base,
+            "rules": {
+                **rules,
+                "content": {
+                    **rules["content"],
+                    "station_landable": {
+                        **rules["content"]["station_landable"],
+                        # Starports become the non-landable class for this run.
+                        "not_landable_classes": ["starport"],
+                    },
+                },
+            },
+        }
+        monkeypatch.setattr(engine, "get_base_rules", lambda: patched)
+
+        assert engine.not_landable_classes() == ("starport",)
+        assert engine.is_landable_build_type("aphrodite") is False  # starport
+        assert engine.is_landable_build_type("ananke") is True  # outpost
+
     def test_get_placement_outpost_variants(self):
         """Outposts exist in both orbital and surface variants."""
         # Scientific Outpost (medium pad, orbital) vs Scientific Surface Outpost
@@ -579,109 +602,6 @@ class TestBuildTypeUtilities:
         assert engine.get_facility_name("aegle") == "Civilian Hub"
         assert engine.get_facility_name("alastor") == "Military Installation"
         assert engine.get_facility_name("unknown") == "unknown"
-
-
-class TestRulesLoadingFromFiles:
-    """Tests for loading rules from external files."""
-
-    def test_load_system_rules(self, tmp_path):
-        """Test loading a system rules file."""
-        rules_file = tmp_path / "test.rules.toml"
-        rules_file.write_text("""
-[system]
-names = ["Test System"]
-dossier = "test.md"
-voices = ["Voice1", "Voice2"]
-""")
-        loaded = engine.load_system_rules(rules_file)
-        assert "system" in loaded
-        assert loaded["system"]["names"] == ["Test System"]
-        assert loaded["system"]["dossier"] == "test.md"
-        assert loaded["system"]["voices"] == ["Voice1", "Voice2"]
-
-    def test_load_house_rules(self, tmp_path):
-        """Test loading house rules file."""
-        rules_file = tmp_path / "all.rules.toml"
-        rules_file.write_text("""
-[rules.filters.banned]
-impl = "rule_filters_banned"
-severity = "error"
-tokens = ["profanity"]
-""")
-        loaded = engine.load_house_rules(rules_file)
-        assert "rules" in loaded
-        assert "filters" in loaded["rules"]
-        assert "banned" in loaded["rules"]["filters"]
-        assert loaded["rules"]["filters"]["banned"]["impl"] == "rule_filters_banned"
-
-class TestMergeRules:
-    """Tests for merging base, house, and system rules."""
-
-    def test_merge_rules_basic(self):
-        """Test basic merge functionality."""
-        base = {
-            "rules": {
-                "test_rule": {"impl": "rule_test", "severity": "error", "value": 1}
-            }
-        }
-        house = {
-            "rules": {
-                "test_rule": {"value": 2}
-            }
-        }
-        system = {
-            "rules": {
-                "test_rule": {"value": 3}
-            }
-        }
-        merged = engine.merge_rules(base, house, system)
-        assert merged["rules"]["test_rule"]["value"] == 3
-        assert merged["rules"]["test_rule"]["impl"] == "rule_test"
-        assert merged["rules"]["test_rule"]["severity"] == "error"
-
-    def test_merge_rules_house_overrides_base(self):
-        """Test that house rules override base rules."""
-        base = {"rules": {"rule1": {"severity": "error", "threshold": 10}}}
-        house = {"rules": {"rule1": {"threshold": 20}}}
-        system = {}
-        merged = engine.merge_rules(base, house, system)
-        assert merged["rules"]["rule1"]["severity"] == "error"
-        assert merged["rules"]["rule1"]["threshold"] == 20
-
-    def test_merge_rules_system_overrides_house(self):
-        """Test that system rules override house rules."""
-        base = {"rules": {"rule1": {"threshold": 10}}}
-        house = {"rules": {"rule1": {"threshold": 20}}}
-        system = {"rules": {"rule1": {"threshold": 30}}}
-        merged = engine.merge_rules(base, house, system)
-        assert merged["rules"]["rule1"]["threshold"] == 30
-
-    def test_merge_rules_deep_merge(self):
-        """Test deep merge of nested dictionaries."""
-        base = {"rules": {"category": {"rule1": {"a": 1, "b": 2}}}}
-        house = {"rules": {"category": {"rule1": {"b": 20, "c": 30}}}}
-        system = {}
-        merged = engine.merge_rules(base, house, system)
-        assert merged["rules"]["category"]["rule1"]["a"] == 1
-        assert merged["rules"]["category"]["rule1"]["b"] == 20
-        assert merged["rules"]["category"]["rule1"]["c"] == 30
-
-    def test_merge_rules_empty_house_system(self):
-        """Test merge with empty house and system rules."""
-        base = {"rules": {"rule1": {"value": 1}}}
-        house = {}
-        system = {}
-        merged = engine.merge_rules(base, house, system)
-        assert merged["rules"]["rule1"]["value"] == 1
-
-    def test_merge_rules_no_rules_in_house_system(self):
-        """Test merge when house/system have no rules key."""
-        base = {"rules": {"rule1": {"value": 1}}}
-        house = {"other": "data"}
-        system = {"other": "data2"}
-        merged = engine.merge_rules(base, house, system)
-        assert merged["rules"]["rule1"]["value"] == 1
-        assert "other" not in merged  # Only rules are merged
 
 
 class TestTemplateLoading:

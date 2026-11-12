@@ -5,13 +5,16 @@ the Spansh API (https://spansh.co.uk/api).
 No authentication required.
 """
 
-import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
 from urllib.parse import quote
 
-from edcg.facts.transport import HTTPTransport
+# The shared transport creates the client through this module-level httpx
+# binding, which is the seam the client tests patch.
+import httpx  # noqa: F401
+
+from edcg.facts._http import ApiClient, ApiError
 
 
 @dataclass
@@ -51,17 +54,20 @@ class SpanshSystem:
     distance: Optional[float] = None
 
 
-class SpanshAPIError(Exception):
+class SpanshAPIError(ApiError):
     """Exception raised for Spansh API errors."""
     pass
 
 
-class SpanshClient:
+class SpanshClient(ApiClient):
     """Async HTTP client for the Spansh API.
 
     Provides methods to fetch system and station data with configurable
     retry, timeout, and rate limiting. No authentication required.
     """
+
+    error_type = SpanshAPIError
+    default_headers = {"User-Agent": "EDCoPilot-Customization-Generator/0.1.0"}
 
     def __init__(
         self,
@@ -78,56 +84,7 @@ class SpanshClient:
             max_retries: Maximum number of retry attempts for failed requests.
             rate_limit: Maximum requests per second (0 = no limit).
         """
-        self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
-        self.max_retries = max_retries
-        self.rate_limit = rate_limit
-        self._transport = HTTPTransport(base_url, timeout, max_retries, rate_limit)
-
-    async def __aenter__(self) -> "SpanshClient":
-        """Enter async context manager."""
-        await self._transport.__aenter__()
-        return self
-
-    async def __aexit__(
-        self,
-        exc_type: Optional[type[BaseException]],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[object],
-    ) -> None:
-        """Exit async context manager."""
-        await self._transport.__aexit__(exc_type, exc_val, exc_tb)
-
-    async def _ensure_client(self) -> httpx.AsyncClient:
-        """Ensure the HTTP client is created."""
-        if self._client is None:
-            self._client = httpx.AsyncClient(
-                timeout=httpx.Timeout(self.timeout),
-                follow_redirects=True,
-                headers={"User-Agent": "EDCoPilot-Customization-Generator/0.1.0"},
-            )
-        return self._client
-
-    async def close(self) -> None:
-        """Close the HTTP client."""
-        await self._transport.close()
-
-    async def _rate_limit_wait(self) -> None:
-        """Wait if necessary to respect rate limit."""
-        if self.rate_limit <= 0:
-            return
-
-        min_interval = 1.0 / self.rate_limit
-        async with self._rate_lock:
-            now = time.monotonic()
-            elapsed = now - self._last_request_time
-            if elapsed < min_interval:
-                await asyncio.sleep(min_interval - elapsed)
-            self._last_request_time = time.monotonic()
-
-    async def _request_with_retry(self, method: str, url: str, **kwargs) -> httpx.Response:
-        """Make an HTTP request with retry logic."""
-        return await self._transport._request_with_retry(method, url, **kwargs)
+        super().__init__(base_url, timeout, max_retries, rate_limit)
 
     async def get_system(self, system_name: str) -> SpanshSystem:
         """Fetch a system from Spansh by name.

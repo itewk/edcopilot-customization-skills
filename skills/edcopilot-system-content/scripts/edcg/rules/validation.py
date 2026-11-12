@@ -14,16 +14,16 @@ from typing import Any
 from edcg.common.config import get_config
 from edcg.common.layout import PROVENANCE_RE, systems_dir as layout_systems_dir
 from edcg.rules.dossier import (
-    _parse_dossier_sections,
-    _extract_site_table,
-    _get_landable_build_types,
-    _extract_voices_from_section_8,
-    _normalize_station_name,
-    _is_descriptive,
-    _parse_station_list,
-    _starts_simple_station_list,
-    _extract_stations_from_section_7
-)
+    DOSSIER_SECTIONS,
+    SECTION_RE,
+    extract_coverage_stations,
+    extract_site_table,
+    extract_voices,
+    known_token_names,
+    normalize_station_name,
+    parse_sections,
+)
+from edcg.rules.engine import get_landable_build_types, not_landable_classes
 
 # Rule data ships beside the validation module as package data.
 RULE_DATA_DIR = Path(__file__).resolve().parent / "data"
@@ -44,7 +44,6 @@ FILTER_CHUNK_RE = re.compile(r"(?:^|(?<=\]))\s*((?:\([A-Za-z_]+\))+)")
 URL_RE = re.compile(r"(?i)\b(?:https?://|ftp://|www\.)\S+")
 COMMANDER_WORD = re.compile(r"\bCommanders?\b")
 TOKEN_SPAN = re.compile(r"<[^>]*>")
-SECTION_RE = re.compile(r"^##\s+(\d+)\.\s*(.*?)\s*$")
 CELL_TOKEN_RE = re.compile(r"^\s*\**\s*`([^`]+)`")
 BUILD_TYPE_CELL_RE = re.compile(r"^\s*\**\s*`([a-z][a-z0-9_]*)`")
 
@@ -185,6 +184,11 @@ class Content:
         return [t for t in self.tags if self.in_scope(t.line)]
 
 
+def _token_names(base: dict) -> list[str]:
+    """Every EDCoPilot vocabulary token in ``base``, documented and not."""
+    return known_token_names(base.get("vocab", {}))
+
+
 @dataclass
 class Context:
     """Validation context passed to rule functions."""
@@ -227,9 +231,7 @@ class Context:
 
     def known_tokens(self) -> dict[str, str]:
         """{lower-cased token -> canonical spelling}, documented and not."""
-        vocab = self.base.get("vocab", {})
-        names = list(vocab.get("documented", {})) + list(vocab.get("undocumented", []))
-        return {name.lower(): name for name in names}
+        return {name.lower(): name for name in _token_names(self.base)}
 
     def known_filters(self) -> set[str]:
         """Every filter the content may carry, documented or merely in use."""
@@ -757,7 +759,7 @@ def rule_content_fact_no_filters(ctx: Context) -> None:
 def rule_content_station_landable(ctx: Context) -> None:
     cfg = ctx.rule("content.station_landable")
     classes = build_type_classes(ctx.base)
-    not_landable = set(cfg.get("not_landable_classes", ["hub", "installation"]))
+    not_landable = set(cfg.get("not_landable_classes", not_landable_classes()))
 
     by_station: dict[str, list[Tag]] = {}
     for tag in ctx.content.authored_tags():
@@ -1449,247 +1451,6 @@ def validate_content(
 # Definition validation (Story 3.2)
 # ---------------------------------------------------------------------------
 
-DOSSIER_SECTIONS = [
-    "Identity and canon",
-    "Lore and theme",
-    "Tone rules (hard constraints)",
-    "Canon site table",
-    "Corrections log (do not reintroduce these)",
-    "Site list maintenance",
-    "Coverage",
-    "Writing rules",
-    "Open threads (TODO)",
-]
-
-SECTION_RE = re.compile(r"^##\s+(\d+)\.\s*(.*?)\s*$")
-VOICE_TAG_RE = re.compile(r"\[<([^>]+)>\]")
-
-
-def _parse_dossier_sections(dossier: str) -> tuple[dict[int, tuple[str, list[str]]], list[int]]:
-    """Parse dossier into sections: {section_num: (title, lines)}, and section_order list."""
-    sections: dict[int, tuple[str, list[str]]] = {}
-    section_order: list[int] = []
-    lines = dossier.splitlines()
-    current_num = None
-    current_title = None
-    current_lines: list[str] = []
-    
-    for line in lines:
-        m = SECTION_RE.match(line)
-        if m:
-            if current_num is not None:
-                sections[current_num] = (current_title, current_lines)
-            current_num = int(m.group(1))
-            current_title = m.group(2).strip()
-            current_lines = []
-            section_order.append(current_num)
-        else:
-            current_lines.append(line)
-    
-    if current_num is not None:
-        sections[current_num] = (current_title, current_lines)
-    
-    return sections, section_order
-
-
-def _extract_site_table(lines: list[str]) -> list[dict]:
-    """Extract site table rows from section 4 lines.
-    
-    Returns list of {name, build_type, body, status} dicts.
-    Looks for tables with "Build type" column and a site name column.
-    Handles variations like "Site | Build type | Body" or "System | Site | Build type | Orbits".
-    Status is one of: complete, build, plan, tentative.
-    """
-    sites = []
-    i = 0
-    current_status = "unknown"
-    
-    while i < len(lines):
-        line = lines[i].strip()
-        
-        # Track subsection status
-        if line.startswith("### Complete"):
-            current_status = "complete"
-        elif line.startswith("### Under construction"):
-            current_status = "build"
-        elif line.startswith("### Definitely planned"):
-            current_status = "plan"
-        elif line.startswith("### Tentatively planned"):
-            current_status = "tentative"
-        
-        # Look for the header row - must have "Build type" column
-        if line.startswith("|") and "Build type" in line:
-            # Found a potential site table header, check for separator row next
-            if i + 1 < len(lines):
-                sep_line = lines[i + 1].strip()
-                if sep_line.startswith("|") and all(c.startswith("-") or c.startswith(":") for c in [c.strip() for c in sep_line.strip("|").split("|")]):
-                    # This is a site table, parse header to find column indices
-                    header_cells = [c.strip() for c in line.strip("|").split("|")]
-                    name_col = None
-                    build_type_col = None
-                    body_col = None
-                    
-                    for idx, cell in enumerate(header_cells):
-                        cell_lower = cell.lower()
-                        if "site" in cell_lower and name_col is None:
-                            name_col = idx
-                        elif "build type" in cell_lower:
-                            build_type_col = idx
-                        elif "body" in cell_lower or "orbits" in cell_lower:
-                            body_col = idx
-                    
-                    # If we can't find columns by name, use positional defaults
-                    if name_col is None:
-                        name_col = 0 if "system" not in header_cells[0].lower() else 1
-                    if build_type_col is None:
-                        build_type_col = 1 if name_col == 0 else 2
-                    if body_col is None:
-                        body_col = 2 if build_type_col == 1 else 3
-                    
-                    # Parse data rows
-                    i += 2
-                    while i < len(lines):
-                        data_line = lines[i].strip()
-                        if not data_line.startswith("|"):
-                            break
-                        cells = [c.strip() for c in data_line.strip("|").split("|")]
-                        max_col = max(name_col, build_type_col, body_col)
-                        if len(cells) > max_col:
-                            name = cells[name_col].strip().strip("`").strip("*").strip("**").strip()
-                            build_type_cell = cells[build_type_col].strip()
-                            body = cells[body_col].strip().strip("`").strip() if body_col < len(cells) else ""
-                            
-                            # Extract build type from backticks
-                            build_type_match = re.search(r"`([a-z][a-z0-9_]*)`", build_type_cell)
-                            build_type = build_type_match.group(1) if build_type_match else ""
-                            
-                            if name and build_type:
-                                sites.append({"name": name, "build_type": build_type, "body": body, "status": current_status})
-                        i += 1
-                    continue  # Continue looking for more tables
-        i += 1
-    
-    return sites
-
-
-def _get_landable_build_types() -> set[str]:
-    """Get set of landable build types from build_types.toml."""
-    build_types_data = _load_toml(RULE_DATA_DIR / "build_types.toml")
-    build_types = build_types_data.get("classes", {})
-    
-    landable = set()
-    for cls in ["starport", "outpost", "settlement"]:
-        for bt in build_types.get(cls, {}):
-            landable.add(bt)
-    return landable
-
-
-def _extract_voices_from_section_8(lines: list[str]) -> set[str]:
-    """Extract voice names from dossier section 8 (Writing rules).
-    
-    Only extracts from the "Voices used" subsection, and excludes known tokens.
-    """
-    # Known tokens that are not voices (from base.toml vocab)
-    known_tokens = {
-        "commander", "cmdrname", "cmdraddress", "myshipname", "fuellevels", "fuellevels",
-        "starsystem", "randomstarsystem", "stationname", "fccaptain", "shipainame",
-        "mycallsign", "callsign", "othercallsign", "flightnum", "shipcorporation",
-        "shipcorpshiptype", "localdestination", "systemname", "bodyname", "bodytype",
-        "greeting", "ship1", "ship2", "ship3", "anyship", "shipvessel",
-        "famousstarsystem", "prisonstarsystem", "thargoidsystem", "stationfaction",
-        "stationnick", "stationpart", "stationevent",
-    }
-    
-    voices = set()
-    in_voices_used = False
-    
-    for line in lines:
-        stripped = line.strip()
-        
-        # Check for "Voices used" header
-        if stripped.startswith("###") and "Voices used" in stripped:
-            in_voices_used = True
-            continue
-        
-        # Stop at next subsection header
-        if in_voices_used and stripped.startswith("###"):
-            break
-        
-        if in_voices_used:
-            for match in VOICE_TAG_RE.finditer(line):
-                voice = match.group(1)
-                # Exclude known tokens (case-insensitive)
-                if voice.lower() not in known_tokens:
-                    voices.add(voice)
-    
-    return voices
-
-
-def _normalize_station_name(name: str) -> str:
-    """Normalize station name for comparison: strip markdown formatting."""
-    # Remove backticks and asterisks
-    name = name.strip("`").strip("*").strip()
-    return name
-
-
-_DESCRIPTIVE_PREFIXES = (
-    "Built", "Tentative", "and ", "so ", "the ", "a ", "an ",
-)
-
-
-def _is_descriptive(line: str) -> bool:
-    """True when a coverage line is prose rather than a station name."""
-    stripped = line.strip()
-    return (
-        stripped.startswith(_DESCRIPTIVE_PREFIXES)
-        or "deliberately excluded" in stripped
-        or "sites with no pads" in stripped
-    )
-
-
-def _parse_station_list(text: str) -> set[str]:
-    """Split one coverage line on its separators and keep station-like names."""
-    stations: set[str] = set()
-    for part in re.split(r"[·•,\n]", text):
-        part = part.strip().strip("`").strip("*").strip()
-        if part and len(part) > 2 and not part.lower().startswith(
-            ("the ", "a ", "an ")
-        ):
-            stations.add(_normalize_station_name(part))
-    return stations
-
-
-def _starts_simple_station_list(stripped: str) -> bool:
-    """True when a line without the header looks like the simple list format."""
-    return (
-        ("·" in stripped or "•" in stripped)
-        and not stripped.startswith(("Built", "Tentative"))
-        and "deliberately" not in stripped
-    )
-
-
-def _extract_stations_from_section_7(lines: list[str]) -> set[str]:
-    """Station names from section 7: a ``### Stations covered`` list or a simple one."""
-    stations: set[str] = set()
-    in_station_list = False
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("###") and "Stations covered" in stripped:
-            in_station_list = True
-            continue
-        if in_station_list and stripped.startswith("###"):
-            break
-        if in_station_list:
-            if stripped and not _is_descriptive(stripped):
-                stations |= _parse_station_list(stripped)
-            continue
-        if stripped and _starts_simple_station_list(stripped):
-            in_station_list = True
-            if not _is_descriptive(stripped):
-                stations |= _parse_station_list(stripped)
-    return stations
-
-
 def _parse_rules_toml(rules: str) -> tuple[dict, list[Finding]]:
     """Parse rules TOML and validate required fields."""
     findings: list[Finding] = []
@@ -1776,7 +1537,7 @@ def validate_definition(
             ))
     
     # 2. Parse dossier sections
-    sections, section_order = _parse_dossier_sections(dossier)
+    sections, section_order = parse_sections(dossier)
     
     # Check all 9 spine sections present and in order
     section_numbers = sorted(sections.keys())
@@ -1812,7 +1573,7 @@ def validate_definition(
     # 3. Section 4: Parse site table
     sites: list[dict] = []
     if 4 in sections:
-        sites = _extract_site_table(sections[4][1])
+        sites = extract_site_table(sections[4][1])
         if not sites:
             findings.append(Finding(
                 rule="dossier.site_table",
@@ -1830,7 +1591,10 @@ def validate_definition(
     
     # 4. Section 8: Extract voices and cross-reference with rules
     if 8 in sections:
-        dossier_voices = _extract_voices_from_section_8(sections[8][1])
+        dossier_voices = extract_voices(
+            sections[8][1],
+            {name.lower() for name in _token_names(load_base_config(RULE_DATA_DIR))},
+        )
     else:
         dossier_voices = set()
         findings.append(Finding(
@@ -1866,7 +1630,7 @@ def validate_definition(
     
     # 5. Section 7: Extract stations and cross-reference with landable sites from §4
     if 7 in sections:
-        coverage_stations = _extract_stations_from_section_7(sections[7][1])
+        coverage_stations = extract_coverage_stations(sections[7][1])
     else:
         coverage_stations = set()
         findings.append(Finding(
@@ -1877,11 +1641,11 @@ def validate_definition(
         ))
     
     # Get landable stations from section 4 (excluding tentative/placeholder sites)
-    landable_build_types = _get_landable_build_types()
+    landable_build_types = set(get_landable_build_types())
     # Build mapping from normalized name to site info for matching
     # Only include sites that are not tentative (placeholder) status
     landable_sites_map = {
-        _normalize_station_name(s["name"]): s 
+        normalize_station_name(s["name"]): s 
         for s in sites 
         if s["build_type"] in landable_build_types and s.get("status") != "tentative"
     }
@@ -1891,7 +1655,7 @@ def validate_definition(
     # Stations in coverage but not landable in §4
     for station in sorted(coverage_stations - landable_sites_normalized):
         # Check if it exists in §4 but is non-landable
-        site_info = next((s for s in sites if _normalize_station_name(s["name"]) == station), None)
+        site_info = next((s for s in sites if normalize_station_name(s["name"]) == station), None)
         if site_info and site_info["build_type"] not in landable_build_types:
             findings.append(Finding(
                 rule="dossier.coverage_match",

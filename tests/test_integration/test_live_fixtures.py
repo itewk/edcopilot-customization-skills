@@ -21,19 +21,18 @@ The files are opened for reading only; nothing under either root is written.
 """
 
 import os
+import tomllib
 from pathlib import Path
 
 import pytest
 
 from edcg.content.custom_file import CUSTOM_FILE_NAME
-from edcg.rules import engine
+from edcg.rules.dossier import extract_site_table, parse_sections
 from edcg.rules.validation import (
     PROVENANCE_RE,
     RULE_DATA_DIR,
     Finding,
     ValidationResult,
-    _extract_site_table,
-    _parse_dossier_sections,
     load_all_system_rules,
     load_base_config,
     load_house_rules,
@@ -119,6 +118,11 @@ def _system_rules_files(systems_dir: Path) -> list[Path]:
     ]
 
 
+def _load_raw_rules(path: Path) -> dict:
+    """Parse a rules TOML exactly as written (the raw-loader view of a file)."""
+    return tomllib.loads(path.read_text(encoding="utf-8"))
+
+
 def _declared_names(rules: dict) -> list[str]:
     system = rules.get("system") or {}
     names = system.get("names") or []
@@ -135,7 +139,7 @@ def _dossier_pairs(systems_dir: Path) -> tuple[list[tuple[Path, Path]], list[Pat
     """
     by_dossier: dict[Path, Path] = {}
     for rules_path in _system_rules_files(systems_dir):
-        declared = (engine.load_system_rules(rules_path).get("system") or {}).get("dossier")
+        declared = (_load_raw_rules(rules_path).get("system") or {}).get("dossier")
         if not declared:
             continue
         for candidate in (systems_dir / declared, systems_dir.parent / declared):
@@ -228,7 +232,7 @@ def test_live_systems_md_validation(live_systems_dir: Path, live_house_rules: Pa
     for dossier_path, rules_path in pairs:
         dossier = dossier_path.read_text(encoding="utf-8")
         rules = rules_path.read_text(encoding="utf-8")
-        names = _declared_names(engine.load_system_rules(rules_path))
+        names = _declared_names(_load_raw_rules(rules_path))
         assert names, f"{rules_path.name} declares no system.names"
         system_name = names[0]
 
@@ -237,7 +241,7 @@ def test_live_systems_md_validation(live_systems_dir: Path, live_house_rules: Pa
         _assert_findings_well_formed(result, f"{dossier_path.name} / {rules_path.name}")
 
         # The reader's own parse, via the helpers the validator itself uses.
-        sections, order = _parse_dossier_sections(dossier)
+        sections, order = parse_sections(dossier)
         assert sorted(sections) == list(range(1, 10)), (
             f"{dossier_path.name}: the spine parsed to sections {sorted(sections)}, "
             "not 1..9"
@@ -245,7 +249,7 @@ def test_live_systems_md_validation(live_systems_dir: Path, live_house_rules: Pa
         assert order == list(range(1, 10)), (
             f"{dossier_path.name}: the spine parsed out of order: {order}"
         )
-        assert _extract_site_table(sections[4][1]), (
+        assert extract_site_table(sections[4][1]), (
             f"{dossier_path.name}: section 4 parsed to no site table rows"
         )
 
@@ -291,7 +295,7 @@ def test_live_systems_rules_toml_loading(
 
     rows: list[str] = []
     for rules_path in rules_files:
-        loaded = engine.load_system_rules(rules_path)
+        loaded = _load_raw_rules(rules_path)
         assert isinstance(loaded, dict) and loaded, f"{rules_path.name} loaded nothing"
         names = _declared_names(loaded)
         assert names, f"{rules_path.name} declares no system.names"
@@ -506,7 +510,7 @@ def test_companion_template_example_files(live_systems_dir: Path) -> None:
     assert rules_files, f"companion template at {template_dir} has no rules files"
 
     for rules_path in rules_files:
-        loaded = engine.load_house_rules(rules_path)
+        loaded = _load_raw_rules(rules_path)
         assert isinstance(loaded, dict) and loaded, f"{rules_path} loaded nothing"
 
         declared = (loaded.get("system") or {}).get("dossier")

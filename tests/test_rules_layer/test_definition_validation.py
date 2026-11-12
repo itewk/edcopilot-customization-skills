@@ -5,10 +5,10 @@ Tests validate_definition(dossier: str, rules: str, system_name: str) -> Validat
 """
 
 import pytest
+from edcg.rules.dossier import normalize_station_name
 from edcg.rules.validation import (
     ValidationResult,
     Finding,
-    _normalize_station_name,
     validate_definition,
 )
 
@@ -90,8 +90,8 @@ warn_below_by_kind = { StationGreeting = 1 }
 
 def test_station_name_normalization_preserves_parenthetical():
     """A parenthetical part is part of the station name, not removable decoration."""
-    assert _normalize_station_name("Station (Old)") == "Station (Old)"
-    assert _normalize_station_name("Station (Old)") != _normalize_station_name("Station (New)")
+    assert normalize_station_name("Station (Old)") == "Station (Old)"
+    assert normalize_station_name("Station (Old)") != normalize_station_name("Station (New)")
 
 
 # ============================================================

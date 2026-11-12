@@ -7,12 +7,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from edcg.facts.facts import (
-    FactsDiff,
     JournalOnlyStation,
     LandableStation,
     NonLandableSite,
     SourceAttribution,
-    StatusChange,
     SystemFacts,
     _names_match,
     compute_facts_diff,
@@ -1398,125 +1396,6 @@ class TestComputeFactsDiff:
         assert len(diff.journal_only_stations) == 1
         assert diff.journal_only_stations[0].name == "Journal Only"
 
-
-# ============================================================================
-# FactsDiff Formatting Tests
-# ============================================================================
-
-class TestFactsDiffFormatting:
-    """Tests for FactsDiff formatting methods."""
-
-    def create_sample_diff(self):
-        """Create a sample FactsDiff for formatting tests."""
-        diff = FactsDiff(
-            system_name="Test System",
-            old_revision=40,
-            new_revision=45,
-            raven_revision_delta=5,
-            new_landable_stations=[
-                LandableStation(name="New Station", build_type="starport", facility_class="starport", facility_name="Large Planetary Port", body="Body 2", status="build", source="raven", placement="surface", is_landable=True),
-            ],
-            lost_landable_stations=[],
-            renamed_stations=[],
-            build_type_changes=[],
-            status_changes=[
-                StatusChange(name="Progressing Station", old_status="plan", new_status="build"),
-            ],
-            new_non_landable_sites=[
-                NonLandableSite(name="New Hub", build_type="hub", facility_class="hub", facility_name="Civilian Hub", body="Body 1", status="plan", source="raven", placement="orbital", is_landable=False),
-            ],
-            lost_non_landable_sites=[],
-            journal_only_stations=[
-                JournalOnlyStation(name="Journal Station", system="Test System", timestamp=datetime.now(UTC), market_id=12345),
-            ],
-            inara_discrepancies=[],
-            spansh_discrepancies=[],
-            conflicts=[],
-        )
-        return diff
-
-    def test_format_for_llm_basic(self):
-        """Test format_for_llm produces structured output."""
-        diff = self.create_sample_diff()
-        llm_format = diff.format_for_llm()
-
-        assert isinstance(llm_format, str)
-        assert "Test System" in llm_format
-        assert "Raven revision: 40 -> 45 (+5)" in llm_format
-        assert "New landable stations (1):" in llm_format
-        assert "New Station" in llm_format
-        assert "starport" in llm_format
-        assert "Status changes (1):" in llm_format
-        assert "Progressing Station" in llm_format
-        assert "plan -> build" in llm_format
-        assert "New non-landable sites (1):" in llm_format
-        assert "New Hub" in llm_format
-        assert "Journal-only stations (1):" in llm_format
-        assert "Journal Station" in llm_format
-
-    def test_present_changes_basic(self):
-        """Test present_changes produces human-readable summary."""
-        diff = self.create_sample_diff()
-        summary = diff.present_changes()
-
-        assert isinstance(summary, str)
-        assert "Test System" in summary
-        assert "Raven revision 40 → 45 (+5)" in summary
-        assert "New Station" in summary
-        assert "Progressing Station" in summary
-        assert "New Hub" in summary
-        assert "Journal Station" in summary
-
-    def test_format_for_llm_no_changes(self):
-        """Test format_for_llm when no changes."""
-        diff = FactsDiff(
-            system_name="Test System",
-            old_revision=40,
-            new_revision=40,
-            raven_revision_delta=0,
-            new_landable_stations=[],
-            lost_landable_stations=[],
-            renamed_stations=[],
-            build_type_changes=[],
-            status_changes=[],
-            new_non_landable_sites=[],
-            lost_non_landable_sites=[],
-            journal_only_stations=[],
-            inara_discrepancies=[],
-            spansh_discrepancies=[],
-            conflicts=[],
-        )
-
-        llm_format = diff.format_for_llm()
-        assert "No changes detected" in llm_format
-
-    def test_present_changes_no_changes(self):
-        """Test present_changes when no changes."""
-        diff = FactsDiff(
-            system_name="Test System",
-            old_revision=40,
-            new_revision=40,
-            raven_revision_delta=0,
-            new_landable_stations=[],
-            lost_landable_stations=[],
-            renamed_stations=[],
-            build_type_changes=[],
-            status_changes=[],
-            new_non_landable_sites=[],
-            lost_non_landable_sites=[],
-            journal_only_stations=[],
-            inara_discrepancies=[],
-            spansh_discrepancies=[],
-            conflicts=[],
-        )
-
-        summary = diff.present_changes()
-        assert "No changes detected" in summary
-
-
-# ============================================================================
-# Edge Cases
-# ============================================================================
 
 class TestEdgeCases:
     """Edge case tests."""

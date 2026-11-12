@@ -7,10 +7,10 @@ Provides diff computation between dossier versions for LLM prompt building.
 
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional, Protocol
+from datetime import datetime
+from typing import Literal, Optional, Protocol, overload
 
-from edcg.facts.journal import JournalData, JournalStation, JournalVisit, find_journal_dir, parse_journal
+from edcg.facts.journal import JournalData, JournalStation, find_journal_dir, parse_journal
 from edcg.facts.raven import RavenSite, RavenSystem, is_placeholder_name, is_unresolved_site
 from edcg.facts.inara import InaraStation, InaraSystem
 from edcg.facts.spansh import SpanshStation, SpanshSystem
@@ -50,8 +50,13 @@ class SourceAttribution:
 
 
 @dataclass
-class LandableStation:
-    """A landable station (starport, outpost, or settlement)."""
+class Site:
+    """A colonisation site: a landable station or a hub/installation.
+
+    Landable and non-landable sites carry the same facts and differ only in
+    ``is_landable``, so one record serves both. ``LandableStation`` and
+    ``NonLandableSite`` remain as the names the callers and type hints use.
+    """
     name: str
     build_type: str
     facility_class: str
@@ -65,20 +70,13 @@ class LandableStation:
     last_docked: Optional[datetime] = None
 
 
+LandableStation = Site
+
+
 @dataclass
-class NonLandableSite:
+class NonLandableSite(Site):
     """A non-landable site (hub or installation)."""
-    name: str
-    build_type: str
-    facility_class: str
-    facility_name: str
-    body: str
-    status: str
-    source: str
-    placement: str  # "surface", "orbital", or "unknown"
     is_landable: bool = False
-    market_id: Optional[int] = None
-    last_docked: Optional[datetime] = None
 
 
 @dataclass
@@ -174,92 +172,6 @@ class FactsDiff:
     spansh_discrepancies: list[SourceAttribution] = field(default_factory=list)
     conflicts: list[SourceAttribution] = field(default_factory=list)
 
-    def format_for_llm(self) -> str:
-        """Format diff for LLM prompt consumption."""
-        lines: list[str] = [
-            f"System: {self.system_name}",
-            f"Raven revision: {self.old_revision} -> {self.new_revision} ({self.raven_revision_delta:+d})",
-            "",
-        ]
-
-        if self.new_landable_stations:
-            lines.append(f"New landable stations ({len(self.new_landable_stations)}):")
-            for station in self.new_landable_stations:
-                lines.append(f"  - {station.name} ({station.build_type}, {station.facility_class}, {station.status}) on {station.body}")
-            lines.append("")
-
-        if self.lost_landable_stations:
-            lines.append(f"Lost landable stations ({len(self.lost_landable_stations)}):")
-            for station in self.lost_landable_stations:
-                lines.append(f"  - {station.name} ({station.build_type})")
-            lines.append("")
-
-        if self.renamed_stations:
-            lines.append(f"Renamed stations ({len(self.renamed_stations)}):")
-            for renamed in self.renamed_stations:
-                lines.append(f"  - {renamed.old_name} -> {renamed.new_name}")
-            lines.append("")
-
-        if self.build_type_changes:
-            lines.append(f"Build type changes ({len(self.build_type_changes)}):")
-            for bt_change in self.build_type_changes:
-                lines.append(f"  - {bt_change.name}: {bt_change.old_build_type} -> {bt_change.new_build_type}")
-            lines.append("")
-
-        if self.status_changes:
-            lines.append(f"Status changes ({len(self.status_changes)}):")
-            for status_change in self.status_changes:
-                lines.append(f"  - {status_change.name}: {status_change.old_status} -> {status_change.new_status}")
-            lines.append("")
-
-        if self.new_non_landable_sites:
-            lines.append(f"New non-landable sites ({len(self.new_non_landable_sites)}):")
-            for site in self.new_non_landable_sites:
-                lines.append(f"  - {site.name} ({site.build_type}, {site.facility_class}) on {site.body}")
-            lines.append("")
-
-        if self.lost_non_landable_sites:
-            lines.append(f"Lost non-landable sites ({len(self.lost_non_landable_sites)}):")
-            for site in self.lost_non_landable_sites:
-                lines.append(f"  - {site.name} ({site.build_type})")
-            lines.append("")
-
-        if self.journal_only_stations:
-            lines.append(f"Journal-only stations ({len(self.journal_only_stations)}):")
-            for j_station in self.journal_only_stations:
-                lines.append(f"  - {j_station.name} (docked {j_station.timestamp.isoformat()})")
-            lines.append("")
-
-        if self.inara_discrepancies:
-            lines.append(f"Inara discrepancies ({len(self.inara_discrepancies)}):")
-            for disc in self.inara_discrepancies:
-                lines.append(f"  - {disc.field}: {disc.details}")
-            lines.append("")
-
-        if self.spansh_discrepancies:
-            lines.append(f"Spansh discrepancies ({len(self.spansh_discrepancies)}):")
-            for disc in self.spansh_discrepancies:
-                lines.append(f"  - {disc.field}: {disc.details}")
-            lines.append("")
-
-        if self.conflicts:
-            lines.append(f"Conflicts ({len(self.conflicts)}):")
-            for conflict in self.conflicts:
-                lines.append(f"  - {conflict.field}: {conflict.details}")
-            lines.append("")
-
-        if not any([
-            self.new_landable_stations, self.lost_landable_stations,
-            self.renamed_stations, self.build_type_changes,
-            self.status_changes, self.new_non_landable_sites,
-            self.lost_non_landable_sites, self.journal_only_stations,
-            self.inara_discrepancies, self.spansh_discrepancies,
-            self.conflicts,
-        ]):
-            lines.append("No changes detected.")
-
-        return "\n".join(lines)
-
     def has_changes(self) -> bool:
         """Check if this diff contains any changes."""
         return any([
@@ -277,62 +189,31 @@ class FactsDiff:
             self.raven_revision_delta != 0,
         ])
 
-    def present_changes(self) -> str:
-        """Generate human-readable summary of changes."""
-        parts: list[str] = [f"**{self.system_name}** - Changes since Raven revision {self.old_revision}"]
-
-        if self.raven_revision_delta != 0:
-            parts.append(f"Raven revision {self.old_revision} → {self.new_revision} ({self.raven_revision_delta:+d})")
-
-        changes: list[str] = []
-
-        if self.new_landable_stations:
-            names = ", ".join(station.name for station in self.new_landable_stations)
-            changes.append(f"{len(self.new_landable_stations)} new landable station(s): {names}")
-
-        if self.lost_landable_stations:
-            names = ", ".join(station.name for station in self.lost_landable_stations)
-            changes.append(f"{len(self.lost_landable_stations)} landable station(s) removed: {names}")
-
-        if self.renamed_stations:
-            for renamed in self.renamed_stations:
-                changes.append(f"Renamed: {renamed.old_name} → {renamed.new_name}")
-
-        if self.build_type_changes:
-            for bt_change in self.build_type_changes:
-                changes.append(f"Build type changed: {bt_change.name} ({bt_change.old_build_type} → {bt_change.new_build_type})")
-
-        if self.status_changes:
-            for status_change in self.status_changes:
-                changes.append(f"Status changed: {status_change.name} ({status_change.old_status} → {status_change.new_status})")
-
-        if self.new_non_landable_sites:
-            names = ", ".join(site.name for site in self.new_non_landable_sites)
-            changes.append(f"{len(self.new_non_landable_sites)} new non-landable site(s): {names}")
-
-        if self.lost_non_landable_sites:
-            names = ", ".join(site.name for site in self.lost_non_landable_sites)
-            changes.append(f"{len(self.lost_non_landable_sites)} non-landable site(s) removed: {names}")
-
-        if self.journal_only_stations:
-            names = ", ".join(j_station.name for j_station in self.journal_only_stations)
-            changes.append(f"{len(self.journal_only_stations)} journal-only station(s): {names}")
-
-        if self.inara_discrepancies:
-            changes.append(f"{len(self.inara_discrepancies)} Inara discrepancy(ies)")
-
-        if self.spansh_discrepancies:
-            changes.append(f"{len(self.spansh_discrepancies)} Spansh discrepancy(ies)")
-
-        if self.conflicts:
-            changes.append(f"{len(self.conflicts)} conflict(s) flagged")
-
-        if changes:
-            parts.extend(changes)
-        else:
-            parts.append("No changes detected.")
-
-        return "\n".join(parts)
+def _site_record(
+    *,
+    name: str,
+    build_type: str,
+    facility_class: str,
+    facility_name: str,
+    body: str,
+    status: str,
+    source: str,
+    placement: str,
+    landable: bool,
+) -> Site:
+    """Build a site record, choosing the class that carries the default."""
+    site_type = LandableStation if landable else NonLandableSite
+    return site_type(
+        name=name,
+        build_type=build_type,
+        facility_class=facility_class,
+        facility_name=facility_name,
+        body=body,
+        status=status,
+        source=source,
+        placement=placement,
+        is_landable=landable,
+    )
 
 
 async def gather_facts(
@@ -462,49 +343,31 @@ async def gather_facts(
         # some outposts and starports orbit while their surface variants do not.
         placement = get_placement(site.build_type)
 
+        record = _site_record(
+            name=site.name,
+            build_type=site.build_type,
+            facility_class=facility_class,
+            facility_name=facility_name,
+            body=body_name,
+            status=site.status,
+            source="raven",
+            placement=placement,
+            landable=landable,
+        )
         if landable:
-            landable_station: LandableStation = LandableStation(
-                name=site.name,
-                build_type=site.build_type,
-                facility_class=facility_class,
-                facility_name=facility_name,
-                body=body_name,
-                status=site.status,
-                source="raven",
-                placement=placement,
-                is_landable=True,
-            )
-            facts.landable_stations.append(landable_station)
+            facts.landable_stations.append(record)
         else:
-            non_landable_site: NonLandableSite = NonLandableSite(
-                name=site.name,
-                build_type=site.build_type,
-                facility_class=facility_class,
-                facility_name=facility_name,
-                body=body_name,
-                status=site.status,
-                source="raven",
-                placement=placement,
-                is_landable=False,
-            )
-            facts.non_landable_sites.append(non_landable_site)
+            facts.non_landable_sites.append(record)
 
     # --- Cross-reference with Journal ---
     for journal_station in system_stations:
         # Check if this journal station matches a Raven site
         matched = False
-        for landable_station in facts.landable_stations:
-            if _names_match(journal_station.name, landable_station.name):
+        for record in (*facts.landable_stations, *facts.non_landable_sites):
+            if _names_match(journal_station.name, record.name):
                 # Update with journal data
-                landable_station.market_id = journal_station.market_id
-                landable_station.last_docked = journal_station.timestamp
-                matched = True
-                break
-
-        for non_landable_site in facts.non_landable_sites:
-            if _names_match(journal_station.name, non_landable_site.name):
-                non_landable_site.market_id = journal_station.market_id
-                non_landable_site.last_docked = journal_station.timestamp
+                record.market_id = journal_station.market_id
+                record.last_docked = journal_station.timestamp
                 matched = True
                 break
 
@@ -729,18 +592,7 @@ def compute_facts_diff(existing_dossier: dict, new_facts: SystemFacts) -> FactsD
     # Lost landable stations
     for name, station_data in existing_landable.items():
         if name not in new_landable_map:
-            # Reconstruct LandableStation from existing data
-            diff.lost_landable_stations.append(LandableStation(
-                name=name,
-                build_type=station_data.get("build_type", "unknown"),
-                facility_class=get_facility_class(station_data.get("build_type", "")),
-                facility_name=get_facility_name(station_data.get("build_type", "")),
-                body=station_data.get("body", "Unknown"),
-                status=station_data.get("status", "unknown"),
-                source="dossier",
-                placement=get_placement(station_data.get("build_type", "")),
-                is_landable=True,
-            ))
+            diff.lost_landable_stations.append(_lost_site(name, station_data, landable=True))
 
     # Renamed stations (same build_type+body, different name)
     # This is a heuristic: match by build_type and body
@@ -795,28 +647,28 @@ def compute_facts_diff(existing_dossier: dict, new_facts: SystemFacts) -> FactsD
     # Non-landable sites: lost
     for name, site_data in existing_non_landable.items():
         if name not in new_non_landable_map:
-            diff.lost_non_landable_sites.append(NonLandableSite(
-                name=name,
-                build_type=site_data.get("build_type", "unknown"),
-                facility_class=get_facility_class(site_data.get("build_type", "")),
-                facility_name=get_facility_name(site_data.get("build_type", "")),
-                body=site_data.get("body", "Unknown"),
-                status=site_data.get("status", "unknown"),
-                source="dossier",
-                placement=get_placement(site_data.get("build_type", "")),
-                is_landable=False,
-            ))
+            diff.lost_non_landable_sites.append(_lost_site(name, site_data, landable=False))
 
     # Journal-only stations
     diff.journal_only_stations = new_facts.journal_only_stations.copy()
 
     # Inara discrepancies (compare key fields)
     if new_facts.inara_system and existing_dossier.get("inara"):
-        _compare_inara(existing_dossier["inara"], new_facts.inara_system, diff)
+        diff.inara_discrepancies.extend(_compare_fields(
+            existing_dossier["inara"],
+            new_facts.inara_system,
+            _COMMON_SYSTEM_FIELDS,
+            source="inara",
+        ))
 
     # Spansh discrepancies
     if new_facts.spansh_system and existing_dossier.get("spansh"):
-        _compare_spansh(existing_dossier["spansh"], new_facts.spansh_system, diff)
+        diff.spansh_discrepancies.extend(_compare_fields(
+            existing_dossier["spansh"],
+            new_facts.spansh_system,
+            _COMMON_SYSTEM_FIELDS + _SPANSH_ONLY_FIELDS,
+            source="spansh",
+        ))
 
     # Conflicts from new_facts
     diff.conflicts = new_facts.conflicts.copy()
@@ -824,55 +676,67 @@ def compute_facts_diff(existing_dossier: dict, new_facts: SystemFacts) -> FactsD
     return diff
 
 
-def _compare_inara(existing: dict, new: InaraSystem, diff: FactsDiff) -> None:
-    """Compare Inara system data and record discrepancies."""
-    fields = [
-        ("population", "population"),
-        ("government", "government"),
-        ("allegiance", "allegiance"),
-        ("state", "state"),
-        ("security", "security"),
-        ("primary_economy", "primary_economy"),
-    ]
+# The fields both API sources report identically; Spansh adds one of its own.
+_COMMON_SYSTEM_FIELDS = (
+    ("population", "population"),
+    ("government", "government"),
+    ("allegiance", "allegiance"),
+    ("state", "state"),
+    ("security", "security"),
+    ("primary_economy", "primary_economy"),
+)
+_SPANSH_ONLY_FIELDS = (("controlling_minor_faction", "controlling_minor_faction"),)
+
+
+def _compare_fields(
+    existing: dict,
+    new: object,
+    fields: tuple[tuple[str, str], ...],
+    source: str,
+) -> list[SourceAttribution]:
+    """Record where one API source now disagrees with the saved dossier."""
+    discrepancies: list[SourceAttribution] = []
     for old_key, new_attr in fields:
         old_val = existing.get(old_key)
         new_val = getattr(new, new_attr, None)
         if old_val is not None and new_val is not None and str(old_val) != str(new_val):
-            diff.inara_discrepancies.append(SourceAttribution(
+            discrepancies.append(SourceAttribution(
                 field=old_key,
                 value=str(new_val),
-                sources=["inara"],
+                sources=[source],
                 conflict=True,
                 details=f"Changed from {old_val} to {new_val}",
             ))
+    return discrepancies
 
 
-def _compare_spansh(existing: dict, new: SpanshSystem, diff: FactsDiff) -> None:
-    """Compare Spansh system data and record discrepancies."""
-    fields = [
-        ("population", "population"),
-        ("government", "government"),
-        ("allegiance", "allegiance"),
-        ("state", "state"),
-        ("security", "security"),
-        ("primary_economy", "primary_economy"),
-        ("controlling_minor_faction", "controlling_minor_faction"),
-    ]
-    for old_key, new_attr in fields:
-        old_val = existing.get(old_key)
-        new_val = getattr(new, new_attr, None)
-        if old_val is not None and new_val is not None and str(old_val) != str(new_val):
-            diff.spansh_discrepancies.append(SourceAttribution(
-                field=old_key,
-                value=str(new_val),
-                sources=["spansh"],
-                conflict=True,
-                details=f"Changed from {old_val} to {new_val}",
-            ))
+@overload
+def _lost_site(name: str, data: dict, *, landable: Literal[True]) -> LandableStation: ...
+
+
+@overload
+def _lost_site(name: str, data: dict, *, landable: Literal[False]) -> NonLandableSite: ...
+
+
+def _lost_site(name: str, data: dict, *, landable: bool) -> Site:
+    """Reconstruct a site that the saved dossier listed and the plan no longer does."""
+    build_type = data.get("build_type", "unknown")
+    return _site_record(
+        name=name,
+        build_type=build_type,
+        facility_class=get_facility_class(build_type),
+        facility_name=get_facility_name(build_type),
+        body=data.get("body", "Unknown"),
+        status=data.get("status", "unknown"),
+        source="dossier",
+        placement=get_placement(build_type),
+        landable=landable,
+    )
 
 
 __all__ = [
     "SystemFacts",
+    "Site",
     "LandableStation",
     "NonLandableSite",
     "JournalOnlyStation",
