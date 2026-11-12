@@ -145,6 +145,20 @@ def test_abort_tolerant_mocked_repo(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+def test_finalize_push_with_nothing_to_attempt_reports_nothing_to_push(tmp_path):
+    cfg = _mock_config(tmp_path)
+    _init_repo_with_commit(cfg.content_definitions_root, "README.md")
+    _init_repo_with_commit(
+        cfg.edcopilot_root, "EDCoPilot.SpeechExtensions.Custom.txt", ""
+    )
+
+    with patch("edcg.repo.branches.get_config", return_value=cfg):
+        result = finalize_branch(merge=True, push=True)
+
+    assert result.pushed is False
+    assert result.push_status == "nothing_to_push"
+
+
 def _git(repo: Path, *args: str) -> str:
     return subprocess.run(
         ["git", *args], cwd=repo, check=True, capture_output=True, text=True

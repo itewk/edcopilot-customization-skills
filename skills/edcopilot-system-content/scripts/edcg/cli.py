@@ -656,7 +656,7 @@ def command_check_logs(args: argparse.Namespace) -> int:
                 ),
             }
         )
-        return 0
+        return 1
 
     since = _parse_since(args.since) if args.since else _custom_file_mtime(
         resolved.path
@@ -713,7 +713,14 @@ def command_branch_review(args: argparse.Namespace) -> int:
 
 
 def command_branch_finalize(args: argparse.Namespace) -> int:
-    _emit(asdict(branches.finalize_branch(merge=args.merge, push=args.push)))
+    result = branches.finalize_branch(merge=args.merge, push=args.push)
+    _emit(asdict(result))
+
+    # Exit policy keys off what the push actually did, never off `merged`: a
+    # successful push is success even when no merge happened, and a partial or
+    # refused push is not success even when the merge did happen.
+    if result.push_status in {"failed", "nothing_to_push", "partial"}:
+        return 1
     return 0
 
 

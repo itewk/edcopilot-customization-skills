@@ -19,6 +19,9 @@ from edcg import __version__, cli
 from edcg.content.custom_file import CUSTOM_FILE_NAME, VERSION
 from edcg.facts.facts import LandableStation, SystemFacts
 from edcg.facts.raven import RavenSystem
+from edcg.repo.gitrepo import GitRepo
+
+from test_branch_e2e import _environment, _git
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "skills" / "edcopilot-system-content" / "scripts" / "edcg.py"
@@ -624,7 +627,7 @@ def test_check_logs_reports_an_unresolved_edcopilot_root(
     monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(tmp_path))
     monkeypatch.delenv("EDCG_EDCOPILOT_ROOT", raising=False)
 
-    assert cli.main(["check-logs"]) == 0
+    assert cli.main(["check-logs"]) == 1
     report = json.loads(capsys.readouterr().out)
     assert report["checked"] is False
     assert "Could not resolve EDCoPilot's root" in report["summary"]
@@ -644,4 +647,141 @@ def test_check_logs_without_a_custom_file_names_that_condition(
     assert report["checked"] is False
     assert "No custom file found" in report["summary"]
     assert "add the markers first" in report["summary"]
+
+
+# ---------------------------------------------------------------------------
+# branch finalize exit codes (real repositories, in-process command handlers)
+# ---------------------------------------------------------------------------
+
+
+def _branch_environment(monkeypatch, tmp_path) -> tuple[Path, Path]:
+    """Two real repositories wired through the environment, as the e2e tests do."""
+    content_root, runtime_root, env = _environment(tmp_path)
+    for key in (
+        "EDCG_CONTENT_DEFINITIONS_ROOT",
+        "EDCG_EDCOPILOT_ROOT",
+        "EDCG_AUTO_COMMIT",
+    ):
+        monkeypatch.setenv(key, env[key])
+    return content_root, runtime_root
+
+
+def _start_branch(capsys, description: str) -> str:
+    assert cli.main(["branch", "start", description]) == 0
+    return json.loads(capsys.readouterr().out)["branch_name"]
+
+
+def _default_branch_of(root: Path) -> str:
+    return _git(root, "rev-parse", "--abbrev-ref", "HEAD").strip()
+
+
+def _conflict_on_default(
+    root: Path, relative: str, feature_branch: str, default_branch: str
+) -> None:
+    """Change a file on the feature branch, then differently on the default."""
+    def write(text: str) -> None:
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+    write("feature\n")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-m", "feature edit")
+    _git(root, "checkout", default_branch)
+    write("default\n")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-m", "default edit")
+    _git(root, "checkout", feature_branch)
+
+
+def test_branch_finalize_push_refused_by_the_remote_exits_1(
+    monkeypatch, tmp_path, capsys
+):
+    """A push the remote refuses is a failed action, not a quiet success."""
+    content_root, _ = _branch_environment(monkeypatch, tmp_path)
+    _start_branch(capsys, "refused push")
+    change = content_root / "systems" / "change.txt"
+    change.write_text("change\n", encoding="utf-8")
+    _git(content_root, "add", "-A")
+    _git(content_root, "commit", "-m", "change")
+
+    calls: list[str] = []
+
+    def failing_push(self, remote: str = "origin"):
+        calls.append(remote)
+        return False
+
+    monkeypatch.setattr(GitRepo, "push", failing_push)
+
+    assert cli.main(["branch", "finalize", "--push"]) == 1
+    data = json.loads(capsys.readouterr().out)
+    assert data["merged"] is True
+    assert data["pushed"] is False
+    assert data["push_status"] == "failed"
+    assert calls == ["origin", "origin"]
+
+
+def test_branch_finalize_partial_push_exits_1(monkeypatch, tmp_path, capsys):
+    """One repository pushed and one refused is not success."""
+    content_root, runtime_root = _branch_environment(monkeypatch, tmp_path)
+    _start_branch(capsys, "partial push")
+    change = content_root / "systems" / "change.txt"
+    change.write_text("change\n", encoding="utf-8")
+    _git(content_root, "add", "-A")
+    _git(content_root, "commit", "-m", "change")
+
+    def push_only_content(self, remote: str = "origin"):
+        return self.path != runtime_root.resolve()
+
+    monkeypatch.setattr(GitRepo, "push", push_only_content)
+
+    assert cli.main(["branch", "finalize", "--push"]) == 1
+    data = json.loads(capsys.readouterr().out)
+    assert data["pushed"] is False
+    assert data["push_status"] == "partial"
+
+
+def test_branch_finalize_push_without_an_active_branch_exits_1(
+    monkeypatch, tmp_path, capsys
+):
+    """--push with nothing to attempt is a distinct status, and still a failure."""
+    _branch_environment(monkeypatch, tmp_path)
+
+    assert cli.main(["branch", "finalize", "--push"]) == 1
+    data = json.loads(capsys.readouterr().out)
+    assert data["merged"] is False
+    assert data["pushed"] is False
+    assert data["push_status"] == "nothing_to_push"
+
+
+def test_branch_finalize_successful_push_without_a_merge_exits_0(
+    monkeypatch, tmp_path, capsys
+):
+    """A push that succeeded is success; a missing merge must not fail it."""
+    content_root, runtime_root = _branch_environment(monkeypatch, tmp_path)
+    default_branch = _default_branch_of(content_root)
+    feature_branch = _start_branch(capsys, "no merge")
+    _conflict_on_default(
+        content_root, "systems/change.txt", feature_branch, default_branch
+    )
+    _conflict_on_default(
+        runtime_root, CUSTOM_FILE_NAME, feature_branch, default_branch
+    )
+
+    calls: list[str] = []
+
+    def successful_push(self, remote: str = "origin"):
+        calls.append(remote)
+        return True
+
+    monkeypatch.setattr(GitRepo, "push", successful_push)
+
+    assert cli.main(["branch", "finalize", "--push"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["merged"] is False
+    assert data["merge_errors"]
+    assert data["pushed"] is True
+    assert data["push_status"] == "pushed"
+    assert calls == ["origin", "origin"]
+
 
