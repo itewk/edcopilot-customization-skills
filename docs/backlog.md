@@ -23,8 +23,10 @@ record until the `v1.0.0` tag.
    guard-tested; the `gather_facts` wiring is pinned end-to-end.
 2. ~~Bounds keys matching no tag kind~~ — **resolved** (`2bb83a8`): warning
    findings at kind and station level, base-level pass included; the live
-   content's inert keys are asserted by the integration test. Correcting the
-   live rules files remains a human-approved content edit.
+   content's inert keys are asserted by the integration test. The affected
+   live rules files will NOT be corrected: the old content repository is being
+   archived and the v1 live run uses a freshly bootstrapped repository, so the
+   inert keys never reach the new workflow (human decision, 2026-11-12).
 3. ~~markdb missing custom file~~ — **resolved** (`35d7580`): exit 1 naming the
    expected file and the resolved root, before any mutation; docs updated.
 4. ~~Exit-code semantics at the edges~~ — **resolved** (`fa3fd57`): refused or
