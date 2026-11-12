@@ -34,6 +34,25 @@ class TestContentRootWriteProbe:
         with pytest.raises(ContentRootError, match="not writable"):
             resolve_content_root(tmp_path, {})
 
+    def test_mkstemp_failure_is_reported_as_not_writable(self, tmp_path, monkeypatch):
+        """A read-only directory refuses the new file before any write happens.
+
+        On Windows a read-only directory fails when the probe is created, not
+        when it is written, so the mkstemp path must report the same verdict.
+        """
+
+        def refusing_mkstemp(*args, **kwargs):
+            raise PermissionError(13, "Permission denied")
+
+        monkeypatch.setattr(
+            "edcg.common.config.tempfile.mkstemp", refusing_mkstemp
+        )
+
+        with pytest.raises(ContentRootError, match="not writable") as raised:
+            resolve_content_root(tmp_path, {})
+
+        assert str(tmp_path) in str(raised.value)
+
     def test_failed_write_leaves_no_probe_behind(self, tmp_path, monkeypatch):
         """Cleanup runs even when the write fails, so no probe file survives."""
 

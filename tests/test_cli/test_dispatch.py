@@ -785,3 +785,15 @@ def test_branch_finalize_successful_push_without_a_merge_exits_0(
     assert calls == ["origin", "origin"]
 
 
+@pytest.mark.parametrize("flags", [["--no-merge", "--push"], ["--push", "--no-merge"]])
+def test_branch_finalize_rejects_no_merge_with_push(flags, capsys):
+    """The pair has no meaning, so it is a usage error rather than a silent drop."""
+    with pytest.raises(SystemExit) as raised:
+        cli.main(["branch", "finalize", *flags])
+
+    assert raised.value.code == 2
+    error = capsys.readouterr().err
+    assert "--no-merge" in error
+    assert "--push" in error
+
+
