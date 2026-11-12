@@ -101,7 +101,9 @@ hide a failure, and do not remove markers to make a report look clean.
 
 An `ok: false` with `checked: false` means no cycle can be checked yet: no log
 was found after the marker add, or no custom file exists to date the cycle. The
-summary names which, so say which one it is rather than calling it a pass.
+summary names which, so say which one it is rather than calling it a pass. Both
+of those cases exit 0 — nothing failed, there was simply nothing to check — while
+an unresolvable EDCoPilot root exits 1, because no report can be produced at all.
 
 ## Advisory gates
 
@@ -164,6 +166,14 @@ git repository, it makes a timestamped **backup** of the custom file instead.
 branch and its uncommitted changes. `edcg.py branch review` prints the diff.
 `edcg.py branch finalize` merges into the default branch and reports the merge
 commits; `edcg.py branch abort --confirm` discards the branch and its commits.
+
+`edcg.py branch finalize --push` reports what the push did in `push_status`:
+`pushed` (every repository pushed), `partial` (some pushed, some refused),
+`failed` (every push was refused), `nothing_to_push` (`--push` was asked for but
+no repository had a branch to push) and `not_pushed` (`--push` was not
+requested). It exits 1 for `failed`, `partial` and `nothing_to_push`, and 0 for
+`pushed` and `not_pushed`: a refused or unattempted push is never a success, and
+a push that succeeded is success even when no merge happened.
 
 Offer a branch before the work starts, never after artifacts exist. Never create
 a branch the user did not ask for.

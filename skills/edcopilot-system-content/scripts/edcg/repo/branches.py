@@ -561,7 +561,11 @@ def finalize_branch(merge: bool = True, push: bool = False) -> FinalizeResult:
 
     if not push_requested:
         push_status = "not_pushed"
-    elif len(push_succeeded) == len(push_attempted) and push_attempted:
+    elif push_requested and not push_attempted:
+        # --push was asked for, but no repository offered a branch to push.
+        # That is not a refusal by a remote; report the distinct label.
+        push_status = "nothing_to_push"
+    elif len(push_succeeded) == len(push_attempted):
         push_status = "pushed"
         pushed = True
     elif push_succeeded:

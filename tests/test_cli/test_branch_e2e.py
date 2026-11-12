@@ -279,7 +279,7 @@ def test_branch_finalize_push_flag_reports_failure(
 
     monkeypatch.setattr(GitRepo, "push", failing_push)
 
-    assert cli.main(["branch", "finalize", "--push"]) == 0
+    assert cli.main(["branch", "finalize", "--push"]) == 1
     data = json.loads(capsys.readouterr().out)
     assert data["merged"] is True
     assert data["pushed"] is False
