@@ -2,20 +2,13 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
 from typing import Optional
 
-from edcg.common.config import Config, load_config
+from edcg.common.config import get_config
+from edcg.common.layout import dossier_path, rules_path, systems_dir
 from edcg.content.custom_file import COMMIT_PREFIX, _append_co_author_trailer
-from edcg.content.rewrite import _slugify
 from edcg.repo.gitrepo import GitRepo
 from edcg.rules.validation import SaveResult
-
-
-def get_config() -> Config:
-    """Load configuration lazily, once per call (spec D5 roots resolution)."""
-    return load_config(os.environ)
 
 
 def save_definition(
@@ -52,21 +45,18 @@ def save_definition(
     """
     config = get_config()
     repo_root = config.content_definitions_root
-    systems_dir = repo_root / "systems"
-    systems_dir.mkdir(parents=True, exist_ok=True)
+    directory = systems_dir(config)
+    directory.mkdir(parents=True, exist_ok=True)
 
-    # Generate slug from system name
-    slug = _slugify(system_name)
-
-    dossier_path = systems_dir / f"{slug}.md"
-    rules_path = systems_dir / f"{slug}.rules.toml"
+    dossier_file = dossier_path(config, system_name)
+    rules_file = rules_path(config, system_name)
 
     # Check if this is a new system or update
-    is_new = not (dossier_path.exists() and rules_path.exists())
+    is_new = not (dossier_file.exists() and rules_file.exists())
 
     # Write files
-    dossier_path.write_text(dossier_md, encoding="utf-8", newline="\r\n")
-    rules_path.write_text(rules_toml, encoding="utf-8", newline="\r\n")
+    dossier_file.write_text(dossier_md, encoding="utf-8", newline="\r\n")
+    rules_file.write_text(rules_toml, encoding="utf-8", newline="\r\n")
 
     # Create commit message
     action = "scaffold" if is_new else "update"
@@ -95,8 +85,8 @@ def save_definition(
 
     # Determine files changed
     files_changed = [
-        str(dossier_path.relative_to(repo_root)),
-        str(rules_path.relative_to(repo_root)),
+        str(dossier_file.relative_to(repo_root)),
+        str(rules_file.relative_to(repo_root)),
     ]
 
     return SaveResult(commit_hash=commit_hash, files_changed=files_changed)

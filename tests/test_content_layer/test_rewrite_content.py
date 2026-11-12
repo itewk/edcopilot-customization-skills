@@ -198,5 +198,32 @@ def test_edit_lands_despite_preexisting_errors(workspace):
     assert workspace["custom"].read_text(encoding="utf-8") == text
 
 
+def test_get_system_content_without_a_root_returns_an_empty_payload(
+    tmp_path, monkeypatch
+):
+    """No resolvable EDCoPilot root is the old empty answer for this read."""
+    content_root = tmp_path / "content"
+    (content_root / "systems").mkdir(parents=True)
+    monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(content_root))
+    monkeypatch.delenv("EDCG_EDCOPILOT_ROOT", raising=False)
+
+    assert get_system_content(SYSTEM) == {"system_name": SYSTEM, "tags": []}
+
+
+def test_rewrite_tag_without_a_root_raises_the_resolver_error(
+    tmp_path, monkeypatch
+):
+    """A rewrite needs the file, so an unresolvable root is a hard error."""
+    content_root = tmp_path / "content"
+    (content_root / "systems").mkdir(parents=True)
+    monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(content_root))
+    monkeypatch.delenv("EDCG_EDCOPILOT_ROOT", raising=False)
+
+    with pytest.raises(
+        FileNotFoundError, match="Could not resolve EDCoPilot's root"
+    ):
+        rewrite_tag(SYSTEM, TAG, remove=["(allbusiness)Old line one."])
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

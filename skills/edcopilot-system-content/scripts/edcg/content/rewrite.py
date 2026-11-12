@@ -6,16 +6,13 @@ additions go to the latest occurrence only. The file is written but not
 committed: the next ``write_content`` owns the content commit.
 """
 
-import os
-import re
 import tomllib
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from edcg.common.config import Config, load_config, resolve_edcopilot_root
-from edcg.content.custom_file import CUSTOM_FILE_NAME, _collapse_provenance
+from edcg.common.config import Config
+from edcg.common.layout import PROVENANCE_RE, resolve_custom_file, rules_path
+from edcg.content.custom_file import _collapse_provenance
 from edcg.rules.validation import (
-    PROVENANCE_RE,
     RULE_DATA_DIR,
     load_base_config,
     load_kinds,
@@ -26,42 +23,14 @@ from edcg.rules.validation import (
 )
 
 
-def _slugify(name: str) -> str:
-    """Convert a system name to a filesystem-safe slug.
-
-    - Lowercase
-    - Replace spaces and special chars with hyphens
-    - Remove parentheses but keep their contents
-    - Collapse multiple hyphens
-    - Strip leading/trailing hyphens
-    """
-    # Replace parentheses with spaces (keep contents)
-    name = name.replace("(", " ").replace(")", " ")
-    # Replace non-alphanumeric with hyphens
-    name = re.sub(r"[^a-zA-Z0-9]+", "-", name)
-    # Collapse multiple hyphens
-    name = re.sub(r"-+", "-", name)
-    # Strip leading/trailing hyphens and lowercase
-    return name.strip("-").lower()
-
-
-def _system_rules_path(config: Config, system_name: str) -> Path:
-    """The system's own rules file inside the content repository."""
-    return (
-        config.content_definitions_root
-        / "systems"
-        / f"{_slugify(system_name)}.rules.toml"
-    )
-
-
 def _system_bounds(
     system_name: str, config: Config, base: dict
 ) -> tuple[dict, dict]:
     """Effective bounds for a system, read from base plus its own rules file."""
     system_cfg = None
-    rules_path = _system_rules_path(config, system_name)
-    if rules_path.is_file():
-        system_cfg = tomllib.loads(rules_path.read_text(encoding="utf-8"))
+    rules_file = rules_path(config, system_name)
+    if rules_file.is_file():
+        system_cfg = tomllib.loads(rules_file.read_text(encoding="utf-8"))
     return resolve_bounds(base, system_cfg)
 
 
@@ -95,12 +64,7 @@ def rewrite_tag(
         ValueError: When the tag or a named line is not there, when there is
             nothing to change, or when the edit introduces a validation error.
     """
-    config = load_config(os.environ)
-    root = resolve_edcopilot_root(config.content_root, os.environ).path
-    if root is None:
-        raise FileNotFoundError("Could not resolve EDCoPilot root")
-
-    custom_file = root / CUSTOM_FILE_NAME
+    custom_file, config = resolve_custom_file()
     if not custom_file.is_file():
         raise FileNotFoundError(f"content file not found: {custom_file}")
 
@@ -166,12 +130,13 @@ def get_system_content(
         than one block), count, min and max. For a StationFact, count is the
         number of paragraphs after the title; the title is not counted.
     """
-    config = load_config(os.environ)
-    root = resolve_edcopilot_root(config.content_root, os.environ).path
-    if root is None:
+    try:
+        custom_file, config = resolve_custom_file()
+    except FileNotFoundError:
+        # No EDCoPilot root is the old empty answer, not an error for this
+        # read-only command; the policy stays here, resolution stays single.
         return {"system_name": system_name, "tags": []}
 
-    custom_file = root / CUSTOM_FILE_NAME
     base = load_base_config(RULE_DATA_DIR)
     kinds, stations = _system_bounds(system_name, config, base)
 

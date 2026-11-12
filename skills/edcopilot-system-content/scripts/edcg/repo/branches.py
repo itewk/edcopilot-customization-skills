@@ -17,6 +17,7 @@ from edcg.common.config import (
     get_config,
     resolve_edcopilot_root,
 )
+from edcg.common.layout import CUSTOM_FILE_NAME
 from edcg.repo.gitrepo import GitRepo
 
 
@@ -384,7 +385,7 @@ def start_branch(description: Optional[str] = None) -> BranchResult:
             UserWarning,
         )
         warnings_list.append("runtime root is not a git repository")
-        custom_file = runtime_root / "EDCoPilot.SpeechExtensions.Custom.txt"
+        custom_file = runtime_root / CUSTOM_FILE_NAME
         if not custom_file.exists():
             try:
                 custom_file.parent.mkdir(parents=True, exist_ok=True)
@@ -393,7 +394,7 @@ def start_branch(description: Optional[str] = None) -> BranchResult:
                 pass
         if custom_file.exists():
             ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-            backup = runtime_root / f"EDCoPilot.SpeechExtensions.Custom.txt.{ts}.bak"
+            backup = runtime_root / f"{CUSTOM_FILE_NAME}.{ts}.bak"
             try:
                 shutil.copy2(custom_file, backup)
                 backup_path = backup

@@ -89,38 +89,6 @@ class AuditReport:
     raven_revision: int | None = None
     last_journal_visit: datetime | None = None
 
-    def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-serializable representation of the report."""
-        return {
-            "system_name": self.system_name,
-            "sources": {
-                name: {
-                    "available": status.available,
-                    "records": status.records,
-                    "detail": status.detail,
-                }
-                for name, status in self.sources.items()
-            },
-            "discrepancies": [
-                {
-                    "category": item.category,
-                    "severity": item.severity,
-                    "message": item.message,
-                    "sources": list(item.sources),
-                    "details": _jsonable(item.details),
-                }
-                for item in self.discrepancies
-            ],
-            "counts": dict(self.counts),
-            "passed": self.passed,
-            "raven_revision": self.raven_revision,
-            "last_journal_visit": (
-                self.last_journal_visit.isoformat()
-                if self.last_journal_visit is not None
-                else None
-            ),
-        }
-
 
 def build_audit_report(
     facts: SystemFacts, config: Config | None = None
@@ -536,17 +504,6 @@ def _counts(discrepancies: list[AuditDiscrepancy]) -> dict[str, int]:
         counts[item.severity] += 1
         counts[item.category] = counts.get(item.category, 0) + 1
     return counts
-
-
-def _jsonable(value: Any) -> Any:
-    """Recursively convert datetimes and tuples into JSON-safe values."""
-    if isinstance(value, datetime):
-        return value.isoformat()
-    if isinstance(value, dict):
-        return {key: _jsonable(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_jsonable(item) for item in value]
-    return value
 
 
 __all__ = [

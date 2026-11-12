@@ -10,11 +10,10 @@ from __future__ import annotations
 
 import re
 import tomllib
-from pathlib import Path
-from typing import Awaitable, Callable, Optional
+from typing import Awaitable, Callable
 
 from edcg.common.config import Config
-from edcg.content.rewrite import _slugify
+from edcg.common.layout import dossier_path, rules_path, slugify, systems_dir
 from edcg.facts.facts import SystemFacts, compute_facts_diff
 from edcg.rules.validation import (
     RULE_DATA_DIR,
@@ -33,35 +32,17 @@ RAVEN_REVISION_RE = re.compile(r"revision\s*\|\s*[`\"]?(\d+)", re.IGNORECASE)
 FactsGatherer = Callable[[str, Config], Awaitable[SystemFacts]]
 
 
-def system_rules_path(config: Config, system_name: str) -> Path:
-    """The system's rules file inside the content repository."""
-    return (
-        config.content_definitions_root
-        / "systems"
-        / f"{_slugify(system_name)}.rules.toml"
-    )
-
-
-def dossier_path(config: Config, system_name: str) -> Path:
-    """The system's dossier file inside the content repository."""
-    return (
-        config.content_definitions_root
-        / "systems"
-        / f"{_slugify(system_name)}.md"
-    )
-
-
 def system_names(config: Config) -> list[str]:
     """Canonical names of every system that has a rules file, sorted.
 
     A rules file with no ``system.names`` is skipped rather than guessed at;
     the scan reports only systems it can name.
     """
-    systems_dir = config.content_definitions_root / "systems"
-    if not systems_dir.is_dir():
+    directory = systems_dir(config)
+    if not directory.is_dir():
         return []
     names: list[str] = []
-    for path in sorted(systems_dir.glob("*.rules.toml")):
+    for path in sorted(directory.glob("*.rules.toml")):
         try:
             data = tomllib.loads(path.read_text(encoding="utf-8"))
         except (OSError, tomllib.TOMLDecodeError):
@@ -175,7 +156,7 @@ def writing_brief_data(config: Config, system_name: str) -> dict:
             has not been defined yet).
     """
     dossier_file = dossier_path(config, system_name)
-    rules_file = system_rules_path(config, system_name)
+    rules_file = rules_path(config, system_name)
     if not dossier_file.is_file() or not rules_file.is_file():
         raise FileNotFoundError(
             f"System '{system_name}' not found in content definitions. "
@@ -208,7 +189,7 @@ def writing_brief_data(config: Config, system_name: str) -> dict:
 
     return {
         "system_name": system_name,
-        "slug": _slugify(system_name),
+        "slug": slugify(system_name),
         "dossier_path": str(dossier_file),
         "rules_path": str(rules_file),
         "raven_revision": raven_revision,
@@ -250,14 +231,14 @@ async def build_update_scan(config: Config, gather: FactsGatherer) -> dict:
     Systems without a rules file, without a parseable canonical name, or whose
     facts cannot be gathered are reported with an ``error`` rather than dropped.
     """
-    systems_dir = config.content_definitions_root / "systems"
+    directory = systems_dir(config)
     results: list[dict] = []
-    if not systems_dir.is_dir():
-        return {"systems": results, "systems_dir": str(systems_dir)}
+    if not directory.is_dir():
+        return {"systems": results, "systems_dir": str(directory)}
 
-    for dossier_file in sorted(systems_dir.glob("*.md")):
+    for dossier_file in sorted(directory.glob("*.md")):
         slug = dossier_file.stem
-        rules_file = systems_dir / f"{slug}.rules.toml"
+        rules_file = directory / f"{slug}.rules.toml"
         entry: dict = {
             "slug": slug,
             "dossier_path": str(dossier_file),
@@ -339,4 +320,4 @@ async def build_update_scan(config: Config, gather: FactsGatherer) -> dict:
         )
         results.append(entry)
 
-    return {"systems": results, "systems_dir": str(systems_dir)}
+    return {"systems": results, "systems_dir": str(directory)}

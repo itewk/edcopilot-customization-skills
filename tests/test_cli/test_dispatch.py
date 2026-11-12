@@ -225,8 +225,10 @@ def test_payload_missing_a_required_field_is_a_usage_error(capsys):
 
 def test_gather_facts_requires_a_system(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(tmp_path))
-    assert cli.main(["gather-facts"]) == 2
-    assert "--system" in json.loads(capsys.readouterr().out)["error"]
+    with pytest.raises(SystemExit) as raised:
+        cli.main(["gather-facts"])
+    assert raised.value.code == 2
+    assert "--system" in capsys.readouterr().err
 
 
 def test_gather_facts_emits_the_facts_payload(monkeypatch, tmp_path, capsys):
@@ -354,6 +356,7 @@ def test_update_scan_emits_per_system_deltas(monkeypatch, tmp_path, capsys):
     assert cli.main(["update-scan"]) == 0
     data = json.loads(capsys.readouterr().out)
 
+    assert data["systems_dir"] == str(tmp_path / "systems")
     [entry] = data["systems"]
     assert entry["system_name"] == "Test System"
     assert entry["fact_availability"]["raven"] is True
@@ -382,7 +385,10 @@ def test_markdb_requires_a_payload_or_tags(monkeypatch, tmp_path, capsys):
 
 
 def test_markdb_without_an_action_is_a_usage_error(capsys):
-    assert cli.main(["markdb"]) == 2
+    with pytest.raises(SystemExit) as raised:
+        cli.main(["markdb"])
+    assert raised.value.code == 2
+    assert "add|remove" in capsys.readouterr().err
 
 
 def test_markdb_add_marks_the_tag(monkeypatch, tmp_path, capsys):
