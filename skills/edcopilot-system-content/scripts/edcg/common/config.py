@@ -51,7 +51,6 @@ class Config:
     # Paths
     content_definitions_root: Path
     content_root: Path
-    edcopilot_root: Optional[Path] = None
     edcopilot_logs_dir: Optional[Path] = None
 
     # Optional settings
@@ -121,18 +120,29 @@ def _resolve_content_root(cwd: Path, raw_value: Optional[str]) -> Path:
     return cwd
 
 
+def environ_edcopilot_root(env: Mapping[str, str]) -> Optional[Path]:
+    """The EDCoPilot root the environment names, if any.
+
+    Returns the raw path even when it does not name an existing directory, so
+    callers can report an unusable value by name; ``resolve_edcopilot_root``
+    only ever returns usable directories.
+    """
+    value = _env_value(env, "EDCG_EDCOPILOT_ROOT")
+    return Path(value) if value is not None else None
+
+
 def load_config(env: Mapping[str, str]) -> Config:
     """Load configuration from environment variables."""
     content_root = resolve_content_root(_current_dir(), env)
 
-    edcopilot_root = _env_value(env, "EDCG_EDCOPILOT_ROOT")
+    environment_root = environ_edcopilot_root(env)
     edcopilot_logs_value = _env_value(env, "EDCG_EDCOPILOT_LOGS_DIR")
     edcopilot_logs_dir: Optional[Path]
     if edcopilot_logs_value is not None:
         edcopilot_logs_dir = Path(edcopilot_logs_value)
-    elif edcopilot_root is not None:
+    elif environment_root is not None:
         # EDCoPilot keeps its logs beside the "User custom files" folder.
-        candidate = Path(edcopilot_root).parent / "logs"
+        candidate = environment_root.parent / "logs"
         edcopilot_logs_dir = candidate if candidate.is_dir() else None
     else:
         edcopilot_logs_dir = None
@@ -140,7 +150,6 @@ def load_config(env: Mapping[str, str]) -> Config:
     return Config(
         content_definitions_root=content_root,
         content_root=content_root,
-        edcopilot_root=Path(edcopilot_root) if edcopilot_root is not None else None,
         edcopilot_logs_dir=edcopilot_logs_dir,
         auto_commit=_str_to_bool(_env_value(env, "EDCG_AUTO_COMMIT") or "true"),
         raven_api_url=_env_value(env, "EDCG_RAVEN_API_URL") or DEFAULT_RAVEN_API_URL,

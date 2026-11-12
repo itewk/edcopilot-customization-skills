@@ -11,7 +11,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping, Optional
 
-from edcg.common.config import ConfigError, get_config, resolve_edcopilot_root
+from edcg.common.config import (
+    ConfigError,
+    environ_edcopilot_root,
+    get_config,
+    resolve_edcopilot_root,
+)
 from edcg.repo.gitrepo import GitRepo
 
 
@@ -52,25 +57,16 @@ def resolve_runtime_root(
     unconfigured root fails with a clear message instead of silently omitting
     the runtime repository.
 
-    When ``config`` is supplied it is authoritative: its ``edcopilot_root``
-    (which the CLI builds from ``EDCG_EDCOPILOT_ROOT``) is trusted without
-    consulting the ambient environment, so tests that inject a config are
-    hermetic. Only a caller that passes no config at all falls back to reading
-    ``env``/``os.environ``.
+    ``config`` only supplies the content root used to read ``roots.edcopilot``;
+    it carries no EDCoPilot root of its own. The environment is therefore
+    consulted on every call, and ``env`` exists so a caller (or a test) can
+    supply a hermetic mapping instead of ``os.environ``.
     """
+    env_map = os.environ if env is None else env
     if config is None:
-        env_map = os.environ if env is None else env
         config = get_config(env_map)
-    else:
-        env_map = {}
 
     content_root = getattr(config, "content_definitions_root", None)
-    injected = getattr(config, "edcopilot_root", None)
-
-    # A config's own root wins outright when it is usable; this is also the
-    # environment value on the CLI path, since load_config takes it from there.
-    if injected is not None and Path(injected).is_dir():
-        return Path(injected)
 
     if content_root is not None:
         resolved = resolve_edcopilot_root(content_root, env_map)
@@ -83,10 +79,11 @@ def resolve_runtime_root(
                 "set EDCG_EDCOPILOT_ROOT."
             )
 
-    if injected is not None:
+    environment_root = environ_edcopilot_root(env_map)
+    if environment_root is not None:
         raise ConfigError(
             "EDCoPilot root is unusable: EDCG_EDCOPILOT_ROOT is set to "
-            f"'{injected}' but it is not an existing directory; set a valid "
+            f"'{environment_root}' but it is not an existing directory; set a valid "
             "path or store [roots] edcopilot in the config file"
         )
 
