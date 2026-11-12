@@ -5,11 +5,10 @@ non-repo paths gracefully with warnings instead of exceptions.
 """
 
 import warnings
-import atexit
 import re
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Self
 
 from git import Repo, InvalidGitRepositoryError, GitCommandError
 from git.exc import NoSuchPathError
@@ -39,9 +38,6 @@ class GitRepo:
     results and emitting a warning instead of raising exceptions.
     """
 
-    # Track all repo instances for cleanup on exit (Windows file handle issue)
-    _instances: list["GitRepo"] = []
-
     def __init__(self, path: Path):
         """Initialize GitRepo for the given path.
 
@@ -52,7 +48,6 @@ class GitRepo:
         self._repo: Optional[Repo] = None
         self._is_valid_repo = False
         self._init_repo()
-        GitRepo._instances.append(self)
 
     def _init_repo(self) -> None:
         """Initialize the internal Repo object if path is a valid git repo."""
@@ -64,25 +59,23 @@ class GitRepo:
             self._is_valid_repo = False
 
     def close(self) -> None:
-        """Close the repo and release file handles (important on Windows)."""
+        """Close the repo and release file handles (important on Windows).
+
+        Idempotent: closing twice is safe, so ``with`` blocks and explicit
+        calls can coexist.
+        """
         if self._repo is not None:
             try:
                 self._repo.close()
             except Exception:
                 pass
             self._repo = None
-        if self in GitRepo._instances:
-            GitRepo._instances.remove(self)
 
-    def __del__(self):
-        """Destructor to ensure cleanup."""
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *exc_info) -> None:
         self.close()
-
-    @classmethod
-    def _cleanup_all(cls) -> None:
-        """Clean up all repo instances (called on exit)."""
-        for instance in cls._instances[:]:
-            instance.close()
 
     @classmethod
     def init(cls, path: Path) -> "GitRepo":
@@ -139,18 +132,6 @@ class GitRepo:
             return True
         except ValueError:
             return False
-
-    def _run_git(self, *args: str) -> str:
-        """Run a git command and return stdout.
-
-        This is a low-level method for internal use and testing.
-        """
-        if self._repo is None:
-            return ""
-        try:
-            return self._repo.git.execute(["git"] + list(args), with_extended_output=False)
-        except GitCommandError:
-            return ""
 
     def status(self) -> dict[str, list[str] | bool]:
         """Get repository status.
@@ -227,6 +208,55 @@ class GitRepo:
         except GitCommandError:
             return ""
 
+    def diff_stat(self, ref: str | None = None) -> dict[str, list[str] | int]:
+        """Summarise a diff as changed files plus added/removed line counts.
+
+        Args:
+            ref: Branch to compare against. The summary then covers the commits
+                 on HEAD since it diverged from ``ref`` (``ref...HEAD``). With
+                 ``ref=None`` it covers the working tree and includes untracked
+                 file names, so a review counts the same changes ``status()``
+                 shows.
+
+        Returns:
+            ``{"files": sorted names, "insertions": int, "deletions": int}``.
+            Empty zeroed summary for non-repos or when git refuses the diff.
+        """
+        repo = self._require_repo("diff_stat")
+        if repo is None:
+            return {"files": [], "insertions": 0, "deletions": 0}
+
+        try:
+            if ref is None:
+                names = repo.git.diff("--name-only").splitlines()
+                names += repo.git.diff("--cached", "--name-only").splitlines()
+                names += list(repo.untracked_files)
+                # The working-tree patches come from this wrapper's own diff()
+                # so there is one reader: it answers "" rather than the index
+                # diff when HEAD does not exist yet, which is what review_branch
+                # counted before the consolidation.
+                patches = [self.diff(), self.diff(staged=True)]
+            else:
+                names = repo.git.diff(f"{ref}...HEAD", "--name-only").splitlines()
+                patches = [repo.git.diff(f"{ref}...HEAD")]
+        except GitCommandError:
+            return {"files": [], "insertions": 0, "deletions": 0}
+
+        insertions = 0
+        deletions = 0
+        for patch in patches:
+            for line in patch.splitlines():
+                if line.startswith("+") and not line.startswith("+++"):
+                    insertions += 1
+                elif line.startswith("-") and not line.startswith("---"):
+                    deletions += 1
+
+        return {
+            "files": sorted({name for name in names if name}),
+            "insertions": insertions,
+            "deletions": deletions,
+        }
+
     def add_all(self) -> None:
         """Stage all changes (new, modified, deleted files).
 
@@ -298,29 +328,6 @@ class GitRepo:
                 pass
             return None
 
-    def log(self, n: int = 10) -> list[str]:
-        """Get recent commit messages.
-
-        Args:
-            n: Maximum number of commits to return (default 10).
-
-        Returns:
-            List of commit message strings (most recent first).
-            Empty list for non-repos.
-        """
-        repo = self._require_repo("log")
-        if repo is None:
-            return []
-
-        try:
-            if not self._has_head():
-                return []
-            commits = list(repo.iter_commits(max_count=n))
-            return [commit.summary for commit in commits]
-        except (GitCommandError, ValueError):
-            # ValueError can occur if there are no commits
-            return []
-
     @staticmethod
     def _validate_branch_name(name: str) -> None:
         """Validate a branch name.
@@ -367,6 +374,9 @@ class GitRepo:
     def merge(self, branch: str) -> Optional[str]:
         """Merge the given branch into the current branch.
 
+        A conflicted merge is left in place for the caller to resolve or abort
+        with :meth:`abort_merge`; this method never decides that for it.
+
         Returns:
             Merge commit hash (short) if successful, None otherwise.
         """
@@ -380,6 +390,46 @@ class GitRepo:
             return repo.head.commit.hexsha[:8]
         except GitCommandError:
             return None
+
+    def abort_merge(self) -> None:
+        """Abort an in-progress merge, restoring the pre-merge working tree."""
+        repo = self._require_repo("abort_merge")
+        if repo is None:
+            return
+
+        try:
+            repo.git.merge("--abort")
+        except GitCommandError:
+            pass
+
+    def delete_branch(self, name: str) -> bool:
+        """Force-delete a local branch.
+
+        Returns:
+            True when git deleted the branch, False otherwise (including a
+            branch that cannot be deleted because it is checked out).
+        """
+        repo = self._require_repo("delete_branch")
+        if repo is None:
+            return False
+        self._validate_branch_name(name)
+
+        try:
+            repo.git.branch("-D", name)
+            return True
+        except GitCommandError:
+            return False
+
+    def commits_between(self, base: str, branch: str) -> list[str]:
+        """Return the summaries of commits on ``branch`` that are not on ``base``."""
+        repo = self._require_repo("commits_between")
+        if repo is None:
+            return []
+
+        try:
+            return [commit.summary for commit in repo.iter_commits(f"{base}..{branch}")]
+        except (GitCommandError, ValueError):
+            return []
 
     def push(self, remote: str = "origin") -> Optional[bool]:
         """Push the current branch to the given remote.
@@ -422,20 +472,31 @@ class GitRepo:
             return []
 
     def default_branch(self) -> str:
-        """Detect the repository's default branch via symbolic-ref.
+        """Detect the repository's default branch.
 
-        Falls back to 'main' if detection fails.
+        Prefers a branch that exists locally (``main``, then ``master``, then
+        whatever ``symbolic-ref`` names for the remote), then the first local
+        branch, and finally ``main``. A repository whose default branch is its
+        only branch therefore reports that branch rather than a name the
+        checkout does not have.
         """
         repo = self._require_repo("default_branch")
         if repo is None:
             return "main"
 
+        branches = self.list_branches()
+        for name in ("main", "master"):
+            if name in branches:
+                return name
+
         try:
             ref = repo.git.symbolic_ref("refs/remotes/origin/HEAD")
-            return ref.strip().split("/")[-1] or "main"
+            detected = ref.strip().split("/")[-1]
         except Exception:
-            return "main"
+            detected = ""
 
-
-# Register cleanup on exit to avoid Windows file handle issues
-atexit.register(GitRepo._cleanup_all)
+        if detected and detected in branches:
+            return detected
+        if branches:
+            return branches[0]
+        return detected or "main"

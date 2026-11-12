@@ -17,17 +17,6 @@ from edcg.repo.branches import (
 from edcg.repo.gitrepo import GitRepo
 
 
-@pytest.fixture(autouse=True)
-def reset_state():
-    # Import the module with global state that we need to reset
-    import edcg.repo.branches as branches_module
-    branches_module._active_branch = None
-    branches_module._branch_systems = set()
-    yield
-    branches_module._active_branch = None
-    branches_module._branch_systems = set()
-
-
 @pytest.fixture
 def branch_paths(tmp_path, monkeypatch):
     """A config mock plus the runtime root, supplied through the environment.
@@ -56,17 +45,6 @@ def test_start_branch_non_git_runtime_creates_backup(branch_paths):
     assert r.backup_path is not None
 
 
-def test_start_branch_sets_active_branch(branch_paths):
-    cfg, _ = branch_paths
-    with patch("edcg.repo.branches.get_config", return_value=cfg):
-        with patch("edcg.repo.branches.GitRepo") as GR:
-            GR.is_repo.return_value = False
-            start_branch("desc")
-    # Import and check the global state that was set by start_branch
-    import edcg.repo.branches as branches_module
-    assert branches_module._active_branch is not None
-
-
 def test_branch_status_no_repos(branch_paths):
     cfg, _ = branch_paths
     with patch("edcg.repo.branches.get_config", return_value=cfg):
@@ -85,68 +63,33 @@ def test_finalize_no_active_branch_merged_false(branch_paths):
     assert r.merged is False
 
 
-def test_finalize_merge_false(branch_paths):
-    cfg, _ = branch_paths
-
-    # Set up the global state to simulate an active branch
-    import edcg.repo.branches as branches_module
-    branches_module._active_branch = "feat-x"
+def test_finalize_merge_false_keeps_the_feature_branch(branch_paths):
+    """``--no-merge`` leaves both repositories on the feature branch."""
+    cfg, runtime_root = branch_paths
+    _init_repo_with_commit(cfg.content_definitions_root, "README.md")
+    _init_repo_with_commit(
+        runtime_root, "EDCoPilot.SpeechExtensions.Custom.txt", ""
+    )
 
     with patch("edcg.repo.branches.get_config", return_value=cfg):
-        with patch("edcg.repo.branches.GitRepo") as GR:
-            GR.is_repo.return_value = False
-            r = finalize_branch(merge=False, push=False)
+        started = start_branch("stay on branch")
+        r = finalize_branch(merge=False, push=False)
+
     assert r.merged is False
+    assert r.message == "stayed on feature branch"
+    for root in (cfg.content_definitions_root, runtime_root):
+        assert _git(root, "branch", "--show-current").strip() == started.branch_name
 
 
-def test_abort_no_confirm(branch_paths):
+def test_abort_without_confirm_discards_nothing(branch_paths):
+    """The default is a preview; nothing is deleted until confirmation."""
     cfg, _ = branch_paths
-
-    # Set up the global state to simulate an active branch
-    import edcg.repo.branches as branches_module
-    branches_module._active_branch = "feat-x"
-
     with patch("edcg.repo.branches.get_config", return_value=cfg):
         with patch("edcg.repo.branches.GitRepo") as GR:
             GR.is_repo.return_value = False
             r = abort_branch(confirm=False)
     assert r.confirmed is False
-
-
-def test_abort_confirm_clears_active(branch_paths):
-    cfg, _ = branch_paths
-
-    # Set up the global state to simulate an active branch
-    import edcg.repo.branches as branches_module
-    branches_module._active_branch = "feat-x"
-
-    with patch("edcg.repo.branches.get_config", return_value=cfg):
-        with patch("edcg.repo.branches.GitRepo") as GR:
-            GR.is_repo.return_value = False
-            r = abort_branch(confirm=True)
-
-    # Check that global state was cleared
-    assert branches_module._active_branch is None
-    assert r.confirmed is True
-
-
-def test_abort_tolerant_mocked_repo(branch_paths):
-    cfg, _ = branch_paths
-
-    # Set up the global state to simulate an active branch
-    import edcg.repo.branches as branches_module
-    branches_module._active_branch = "feat-x"
-
-    repo = MagicMock()
-    repo.list_branches.return_value = ["main", "feat-x"]
-    repo._repo = None
-
-    with patch("edcg.repo.branches.get_config", return_value=cfg):
-        with patch("edcg.repo.branches.GitRepo") as GR:
-            GR.is_repo.return_value = True
-            GR.return_value = repo
-            r = abort_branch(confirm=True)
-    assert r is not None
+    assert r.discarded == []
 
 
 # ---------------------------------------------------------------------------

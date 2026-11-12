@@ -1,5 +1,7 @@
 """Tests for Git operations wrapper."""
 
+import shutil
+import subprocess
 import tempfile
 import warnings
 from pathlib import Path
@@ -8,6 +10,13 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from edcg.repo.gitrepo import GitRepo, slugify_branch_name
+
+
+def _git(repo_path: Path, *args: str) -> str:
+    """Run git in ``repo_path``; the wrapper no longer carries a test runner."""
+    return subprocess.run(
+        ["git", *args], cwd=repo_path, check=True, capture_output=True, text=True
+    ).stdout
 
 
 class TestGitRepoInit:
@@ -63,11 +72,10 @@ class TestGitRepoOperations:
         repo_path = Path(tmpdir) / "test_repo"
         repo = GitRepo.init(repo_path)
         # Configure git user for commits
-        repo._run_git("config", "user.name", "Test User")
-        repo._run_git("config", "user.email", "test@example.com")
+        _git(repo_path, "config", "user.name", "Test User")
+        _git(repo_path, "config", "user.email", "test@example.com")
         yield repo
         repo.close()
-        import shutil
         shutil.rmtree(tmpdir, ignore_errors=True)
 
     def test_status_clean_repo(self, repo):
@@ -136,36 +144,22 @@ class TestGitRepoOperations:
         assert commit_hash is not None
         assert len(commit_hash) > 0
         # Verify commit exists
-        log = repo.log(1)
-        assert "Test commit message" in log[0]
+        assert _git(repo.path, "log", "-1", "--format=%s").strip() == "Test commit message"
 
     def test_commit_returns_none_on_empty_commit(self, repo):
         """Test commit() returns None when there's nothing to commit."""
         result = repo.commit("Empty commit")
         assert result is None
 
-    def test_log_returns_recent_commits(self, repo):
-        """Test log() returns recent commit messages."""
+    def test_commit_records_each_commit_in_order(self, repo):
+        """Test successive commits appear most-recent-first in git's log."""
         for i in range(3):
             test_file = repo.path / f"file{i}.txt"
             test_file.write_text(f"content{i}")
             repo.add_all()
             repo.commit(f"Commit {i}")
-        log = repo.log(5)
-        assert len(log) == 3
-        assert "Commit 2" in log[0]
-        assert "Commit 1" in log[1]
-        assert "Commit 0" in log[2]
-
-    def test_log_respects_limit(self, repo):
-        """Test log() respects the n parameter."""
-        for i in range(5):
-            test_file = repo.path / f"file{i}.txt"
-            test_file.write_text(f"content{i}")
-            repo.add_all()
-            repo.commit(f"Commit {i}")
-        log = repo.log(3)
-        assert len(log) == 3
+        log = _git(repo.path, "log", "-5", "--format=%s").splitlines()
+        assert log == ["Commit 2", "Commit 1", "Commit 0"]
 
 
 class TestGitRepoNonRepoHandling:
@@ -180,7 +174,6 @@ class TestGitRepoNonRepoHandling:
         repo = GitRepo(non_repo_path)
         yield repo
         repo.close()
-        import shutil
         shutil.rmtree(tmpdir, ignore_errors=True)
 
     def test_status_on_non_repo_returns_empty_with_warning(self, non_repo):
@@ -218,15 +211,6 @@ class TestGitRepoNonRepoHandling:
             assert len(w) == 1
             assert "not a git repository" in str(w[0].message).lower()
 
-    def test_log_on_non_repo_returns_empty_with_warning(self, non_repo):
-        """Test log() on non-repo returns empty list with warning."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            log = non_repo.log()
-            assert log == []
-            assert len(w) == 1
-            assert "not a git repository" in str(w[0].message).lower()
-
 
 class TestGitRepoAuthorConfig:
     """Tests for commit author configuration."""
@@ -236,8 +220,8 @@ class TestGitRepoAuthorConfig:
         tmpdir = tempfile.mkdtemp()
         repo_path = Path(tmpdir) / "test_repo"
         repo = GitRepo.init(repo_path)
-        repo._run_git("config", "user.name", "Configured User")
-        repo._run_git("config", "user.email", "configured@example.com")
+        _git(repo_path, "config", "user.name", "Configured User")
+        _git(repo_path, "config", "user.email", "configured@example.com")
 
         test_file = repo.path / "author_test.txt"
         test_file.write_text("content")
@@ -245,13 +229,12 @@ class TestGitRepoAuthorConfig:
         commit_hash = repo.commit("Author test")
 
         # Verify author in commit
-        author_name = repo._run_git("log", "-1", "--format=%an", commit_hash).strip()
-        author_email = repo._run_git("log", "-1", "--format=%ae", commit_hash).strip()
+        author_name = _git(repo.path, "log", "-1", "--format=%an", commit_hash).strip()
+        author_email = _git(repo.path, "log", "-1", "--format=%ae", commit_hash).strip()
         assert author_name == "Configured User"
         assert author_email == "configured@example.com"
 
         repo.close()
-        import shutil
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
@@ -263,8 +246,8 @@ class TestGitRepoIntegration:
         tmpdir = tempfile.mkdtemp()
         repo_path = Path(tmpdir) / "integration_repo"
         repo = GitRepo.init(repo_path)
-        repo._run_git("config", "user.name", "Integration Test")
-        repo._run_git("config", "user.email", "integration@test.com")
+        _git(repo_path, "config", "user.name", "Integration Test")
+        _git(repo_path, "config", "user.email", "integration@test.com")
 
         try:
             # Initial commit
@@ -281,7 +264,7 @@ class TestGitRepoIntegration:
             file2.write_text("new file")
 
             # Stage new file
-            repo._run_git("add", "file2.txt")
+            _git(repo.path, "add", "file2.txt")
 
             status = repo.status()
             assert "file1.txt" in status["unstaged"]
@@ -299,14 +282,10 @@ class TestGitRepoIntegration:
             repo.add_all()
             repo.commit("Modify file1")
 
-            log = repo.log(3)
-            assert len(log) == 3
-            assert "Modify file1" in log[0]
-            assert "Add file2" in log[1]
-            assert "Initial commit" in log[2]
+            log = _git(repo.path, "log", "-3", "--format=%s").splitlines()
+            assert log == ["Modify file1", "Add file2", "Initial commit"]
         finally:
             repo.close()
-            import shutil
             shutil.rmtree(tmpdir, ignore_errors=True)
 
 class TestGitRepoBranches:
@@ -318,8 +297,8 @@ class TestGitRepoBranches:
         tmpdir = tempfile.mkdtemp()
         repo_path = Path(tmpdir) / "test_repo"
         repo = GitRepo.init(repo_path)
-        repo._run_git("config", "user.name", "Test User")
-        repo._run_git("config", "user.email", "test@example.com")
+        _git(repo_path, "config", "user.name", "Test User")
+        _git(repo_path, "config", "user.email", "test@example.com")
         # Create initial commit so branches work properly
         test_file = repo_path / "initial.txt"
         test_file.write_text("initial")
@@ -327,7 +306,6 @@ class TestGitRepoBranches:
         repo.commit("Initial commit")
         yield repo
         repo.close()
-        import shutil
         shutil.rmtree(tmpdir, ignore_errors=True)
 
     def test_create_branch_creates_and_checks_out_new_branch(self, repo):
@@ -360,7 +338,6 @@ class TestGitRepoBranches:
                 assert result is None
         finally:
             non_repo.close()
-            import shutil
             shutil.rmtree(tmpdir, ignore_errors=True)
 
     def test_checkout_switches_to_existing_branch(self, repo):
@@ -421,7 +398,6 @@ class TestGitRepoBranches:
                 assert result is None
         finally:
             non_repo.close()
-            import shutil
             shutil.rmtree(tmpdir, ignore_errors=True)
 
     def test_current_branch_returns_current_branch_name(self, repo):
@@ -443,7 +419,6 @@ class TestGitRepoBranches:
                 assert result == ""
         finally:
             non_repo.close()
-            import shutil
             shutil.rmtree(tmpdir, ignore_errors=True)
 
     def test_list_branches_returns_all_branches(self, repo):
@@ -471,13 +446,60 @@ class TestGitRepoBranches:
                 assert result == []
         finally:
             non_repo.close()
-            import shutil
             shutil.rmtree(tmpdir, ignore_errors=True)
 
-    def test_default_branch_returns_main_fallback_for_non_remote_repos(self, repo):
-        """Test default_branch returns 'main' fallback for non-remote repos."""
+    def test_default_branch_prefers_a_branch_that_exists(self, repo):
+        """With no remote, the answer is the branch the repository actually has."""
         result = repo.default_branch()
-        assert result == "main"
+        assert result in repo.list_branches()
+        assert result == repo.current_branch()
+
+    def test_default_branch_prefers_main_over_master(self, committed_repo):
+        """Both exist: ``main`` wins regardless of which branch is checked out."""
+        if committed_repo.current_branch() != "main":
+            _git(committed_repo.path, "branch", "-m", "main")
+        _git(committed_repo.path, "branch", "master")
+
+        assert {"main", "master"} <= set(committed_repo.list_branches())
+        assert committed_repo.default_branch() == "main"
+
+    def test_default_branch_prefers_master_when_main_is_absent(self, committed_repo):
+        """A ``master`` repository answers ``master``, not the ``main`` literal."""
+        if committed_repo.current_branch() != "master":
+            _git(committed_repo.path, "branch", "-m", "master")
+
+        assert "main" not in committed_repo.list_branches()
+        assert committed_repo.default_branch() == "master"
+
+    def test_default_branch_uses_symbolic_ref_for_a_non_conventional_name(
+        self, committed_repo
+    ):
+        """No main/master: the remote HEAD wins over the first local branch."""
+        _git(committed_repo.path, "branch", "-m", "work")
+        _git(committed_repo.path, "branch", "alpha")
+        _git(committed_repo.path, "branch", "release")
+        _git(
+            committed_repo.path,
+            "update-ref",
+            "refs/remotes/origin/release",
+            "HEAD",
+        )
+        _git(
+            committed_repo.path,
+            "symbolic-ref",
+            "refs/remotes/origin/HEAD",
+            "refs/remotes/origin/release",
+        )
+
+        assert committed_repo.default_branch() == "release"
+
+    def test_default_branch_falls_back_to_the_first_branch(self, committed_repo):
+        """No main/master and no remote HEAD: the first local branch answers."""
+        _git(committed_repo.path, "branch", "-m", "work")
+        _git(committed_repo.path, "branch", "alpha")
+        _git(committed_repo.path, "branch", "zeta")
+
+        assert committed_repo.default_branch() == "alpha"
 
     def test_push_on_non_repo_returns_none(self):
         """Test push on non-repo returns None."""
@@ -492,7 +514,6 @@ class TestGitRepoBranches:
                 assert result is None
         finally:
             non_repo.close()
-            import shutil
             shutil.rmtree(tmpdir, ignore_errors=True)
 
     def test_create_branch_with_slash_in_name_works(self, repo):
@@ -500,6 +521,177 @@ class TestGitRepoBranches:
         result = repo.create_branch("feature/test")
         assert result == "feature/test"
         assert repo.current_branch() == "feature/test"
+
+
+class TestGitRepoContextManager:
+    """GitRepo is a resource: a ``with`` block closes it, twice is harmless."""
+
+    def test_with_block_closes_the_repository(self, tmp_path):
+        repo_path = tmp_path / "ctx"
+        GitRepo.init(repo_path).close()
+
+        with GitRepo(repo_path) as opened:
+            assert opened.path == repo_path
+            assert opened.status()["clean"] is True
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            opened.status()
+        assert any("not a git repository" in str(w.message).lower() for w in caught)
+
+    def test_close_is_idempotent(self, tmp_path):
+        repo_path = tmp_path / "ctx"
+        GitRepo.init(repo_path).close()
+
+        repo = GitRepo(repo_path)
+        repo.close()
+        repo.close()
+
+
+@pytest.fixture
+def committed_repo(tmp_path):
+    """A repository with one commit, ready for diff and branch operations."""
+    repo = GitRepo.init(tmp_path / "committed")
+    _git(repo.path, "config", "user.name", "Test User")
+    _git(repo.path, "config", "user.email", "test@example.com")
+    (repo.path / "README.md").write_text("base\n", encoding="utf-8")
+    repo.add_all()
+    repo.commit("base")
+    yield repo
+    repo.close()
+
+
+class TestGitRepoDiffStat:
+    """diff_stat is the one counting rule review and callers share."""
+
+    def test_diff_stat_counts_working_tree_changes(self, committed_repo):
+        (committed_repo.path / "README.md").write_text(
+            "changed\nadded\n", encoding="utf-8"
+        )
+
+        stats = committed_repo.diff_stat()
+
+        assert stats["files"] == ["README.md"]
+        assert stats["insertions"] == 2
+        assert stats["deletions"] == 1
+
+    def test_diff_stat_includes_untracked_files(self, committed_repo):
+        (committed_repo.path / "draft.txt").write_text("draft\n", encoding="utf-8")
+
+        stats = committed_repo.diff_stat()
+
+        assert stats["files"] == ["draft.txt"]
+        assert stats["insertions"] == 0
+
+    def test_diff_stat_for_a_ref_counts_committed_changes(self, committed_repo):
+        default = committed_repo.default_branch()
+        committed_repo.create_branch("feature")
+        (committed_repo.path / "feature.txt").write_text("feature\n", encoding="utf-8")
+        committed_repo.add_all()
+        committed_repo.commit("feature work")
+
+        stats = committed_repo.diff_stat(default)
+
+        assert stats["files"] == ["feature.txt"]
+        assert stats["insertions"] == 1
+        assert stats["deletions"] == 0
+
+    def test_diff_stat_counts_staged_files_before_the_first_commit(self, tmp_path):
+        """No HEAD: diff() answers "" for unstaged, the index diff still counts."""
+        repo = GitRepo.init(tmp_path / "no-head")
+        try:
+            (repo.path / "first.txt").write_text("one\ntwo\n", encoding="utf-8")
+            repo.add_all()
+
+            stats = repo.diff_stat()
+
+            assert stats["files"] == ["first.txt"]
+            assert stats["insertions"] == 2
+            assert stats["deletions"] == 0
+        finally:
+            repo.close()
+
+    def test_diff_stat_on_non_repo_is_zeroed(self, tmp_path):
+        plain = tmp_path / "plain"
+        plain.mkdir()
+        repo = GitRepo(plain)
+        try:
+            with warnings.catch_warnings(record=True):
+                warnings.simplefilter("always")
+                stats = repo.diff_stat()
+            assert stats == {"files": [], "insertions": 0, "deletions": 0}
+        finally:
+            repo.close()
+
+
+class TestGitRepoBranchDeletion:
+    def test_delete_branch_removes_it(self, committed_repo):
+        default = committed_repo.default_branch()
+        committed_repo.create_branch("doomed")
+        committed_repo.checkout(default)
+
+        assert committed_repo.delete_branch("doomed") is True
+        assert "doomed" not in committed_repo.list_branches()
+
+    def test_delete_branch_reports_a_checked_out_branch_as_not_deleted(
+        self, committed_repo
+    ):
+        committed_repo.create_branch("current")
+
+        assert committed_repo.delete_branch("current") is False
+        assert "current" in committed_repo.list_branches()
+
+    def test_delete_branch_on_non_repo_returns_false(self, tmp_path):
+        plain = tmp_path / "plain"
+        plain.mkdir()
+        repo = GitRepo(plain)
+        try:
+            with warnings.catch_warnings(record=True):
+                warnings.simplefilter("always")
+                assert repo.delete_branch("feature") is False
+        finally:
+            repo.close()
+
+
+class TestGitRepoCommitsBetween:
+    def test_commits_between_lists_only_the_branch_commits(self, committed_repo):
+        default = committed_repo.default_branch()
+        committed_repo.create_branch("feature")
+        (committed_repo.path / "feature.txt").write_text("feature\n", encoding="utf-8")
+        committed_repo.add_all()
+        committed_repo.commit("feature work")
+
+        assert committed_repo.commits_between(default, "feature") == ["feature work"]
+
+    def test_commits_between_with_no_divergence_is_empty(self, committed_repo):
+        default = committed_repo.default_branch()
+
+        assert committed_repo.commits_between(default, default) == []
+
+
+class TestGitRepoAbortMerge:
+    def test_abort_merge_restores_a_conflicted_tree(self, committed_repo):
+        default = committed_repo.default_branch()
+        shared = committed_repo.path / "shared.txt"
+        shared.write_text("base\n", encoding="utf-8")
+        committed_repo.add_all()
+        committed_repo.commit("base file")
+
+        committed_repo.create_branch("feature")
+        shared.write_text("feature\n", encoding="utf-8")
+        committed_repo.add_all()
+        committed_repo.commit("feature edit")
+
+        committed_repo.checkout(default)
+        shared.write_text("default\n", encoding="utf-8")
+        committed_repo.add_all()
+        committed_repo.commit("default edit")
+
+        assert committed_repo.merge("feature") is None
+        committed_repo.abort_merge()
+
+        assert committed_repo.status()["clean"] is True
+        assert committed_repo.current_branch() == default
 
 
 class TestSlugifyBranchName:
@@ -529,7 +721,6 @@ class TestPushMock:
         repo.push("origin")
         repo._repo.git.push.assert_called_with("origin")
         repo.close()
-        import shutil
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
@@ -545,7 +736,6 @@ class TestDefaultBranchSymbolicRef:
         repo._repo.git.symbolic_ref.return_value = "refs/remotes/origin/main"
         assert repo.default_branch() == "main"
         repo.close()
-        import shutil
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
