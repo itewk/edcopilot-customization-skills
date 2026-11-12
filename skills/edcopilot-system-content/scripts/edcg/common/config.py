@@ -7,6 +7,7 @@ config file, then "ask").
 
 import os
 import re
+import tempfile
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -102,6 +103,42 @@ def _current_dir() -> Path:
         ) from exc
 
 
+# Prefix for the temporary file that proves the content root accepts writes.
+_PROBE_PREFIX = ".edcg_probe_"
+
+
+def _probe_writable(directory: Path) -> None:
+    """Raise ``ContentRootError`` unless ``directory`` accepts a new file.
+
+    The probe name comes from ``tempfile.mkstemp``, so it can never collide
+    with, and therefore never overwrite or trip over, an existing file or
+    directory. Creating and writing the probe is the writability test; removing
+    it afterwards is best-effort cleanup, because a probe briefly locked by an
+    antivirus scanner or a sync client says nothing about whether the root
+    accepts writes.
+    """
+    try:
+        descriptor, probe_name = tempfile.mkstemp(dir=directory, prefix=_PROBE_PREFIX)
+    except OSError as exc:
+        raise ContentRootError(f"Content root is not writable: {directory}") from exc
+
+    probe = Path(probe_name)
+    try:
+        # mkstemp hands back an open descriptor; close it before writing so the
+        # probe is not left open if the write itself fails.
+        os.close(descriptor)
+        probe.write_text("test", encoding="utf-8")
+    except OSError as exc:
+        raise ContentRootError(f"Content root is not writable: {directory}") from exc
+    finally:
+        try:
+            probe.unlink(missing_ok=True)
+        except OSError:
+            # Cleanup failure is not a writability verdict: reporting it as one
+            # would turn a transient lock into a false "unwritable" error.
+            pass
+
+
 def _resolve_content_root(cwd: Path, raw_value: Optional[str]) -> Path:
     """Resolve the content root: a configured directory, else ``cwd``."""
     if raw_value is not None:
@@ -115,8 +152,9 @@ def _resolve_content_root(cwd: Path, raw_value: Optional[str]) -> Path:
     cwd = Path(cwd)
     if not cwd.is_dir():
         raise ContentRootError(f"Content root does not exist or is not a directory: {cwd}")
-    if not os.access(cwd, os.W_OK):
-        raise ContentRootError(f"Content root is not writable: {cwd}")
+
+    # os.access(W_OK) is unreliable on Windows; write a real file instead.
+    _probe_writable(cwd)
     return cwd
 
 
