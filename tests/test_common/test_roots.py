@@ -1,20 +1,16 @@
 """Tests for common roots resolution module."""
 
 import os
-import tempfile
-from pathlib import Path
 
 import pytest
 
 from edcg.common.config import (
     ConfigError,
     ContentRootError,
-    load_config,
     resolve_content_root,
-    content_root_state,
-    resolve_edcopilot_root,
-    EdcopilotRootResult
+    resolve_edcopilot_root
 )
+from edcg.common.layout import content_root_state
 
 
 class TestContentRootResolution:

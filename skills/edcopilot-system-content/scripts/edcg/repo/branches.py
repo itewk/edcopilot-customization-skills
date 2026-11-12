@@ -18,7 +18,7 @@ from edcg.common.config import (
     resolve_edcopilot_root,
 )
 from edcg.common.layout import CUSTOM_FILE_NAME
-from edcg.repo.gitrepo import GitRepo
+from edcg.repo.gitrepo import GitRepo, slugify_branch_name
 
 
 # Only branches this workflow creates are workflow branches. ``slugify_branch_name``
@@ -197,7 +197,6 @@ def start_branch(description: Optional[str] = None) -> BranchResult:
     is created instead.
     """
     config = get_config()
-    from edcg.repo.gitrepo import slugify_branch_name
 
     branch_name = slugify_branch_name(description)
 
@@ -580,11 +579,6 @@ def review_branch() -> str:
             lines.append(f"  - {name}")
     else:
         lines.append("- (non-git runtime root; diff skipped)")
-    lines.append("")
-    # Branch state is derived from git alone; it carries no system list, so the
-    # section is kept for a stable report shape and always reports none.
-    lines.append("## Systems Affected")
-    lines.append("(none)")
     lines.append("")
 
     return "\n".join(lines)

@@ -110,7 +110,7 @@ class TestInaraClient:
             ]
         }
         mock_response.raise_for_status = MagicMock()
-        mock_httpx_client.post = AsyncMock(return_value=mock_response)
+        mock_httpx_client.request = AsyncMock(return_value=mock_response)
 
         result = await client.get_station("Shinrarta Dezhra", "Jameson Memorial")
 
@@ -120,7 +120,7 @@ class TestInaraClient:
         assert result.services == ["Market", "Shipyard", "Outfitting", "Rearm", "Refuel"]
         assert result.economy == "Extraction"
         assert result.updated == datetime(2024, 1, 15, 12, 30, 0, tzinfo=timezone.utc)
-        mock_httpx_client.post.assert_called_once()
+        mock_httpx_client.request.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_get_station_missing_key(self, client_no_key):
@@ -142,7 +142,7 @@ class TestInaraClient:
             ]
         }
         mock_response.raise_for_status = MagicMock()
-        mock_httpx_client.post = AsyncMock(return_value=mock_response)
+        mock_httpx_client.request = AsyncMock(return_value=mock_response)
 
         result = await client.get_station("Unknown System", "Unknown Station")
         assert result is None
@@ -150,7 +150,7 @@ class TestInaraClient:
     @pytest.mark.asyncio
     async def test_get_station_rate_limit(self, client, mock_httpx_client):
         """Test get_station handles rate limit (429) gracefully."""
-        mock_httpx_client.post = AsyncMock(
+        mock_httpx_client.request = AsyncMock(
             side_effect=httpx.HTTPStatusError(
                 "429 Too Many Requests",
                 request=MagicMock(),
@@ -166,7 +166,7 @@ class TestInaraClient:
     @pytest.mark.asyncio
     async def test_get_station_network_error(self, client, mock_httpx_client):
         """Test get_station raises InaraAPIError on network error."""
-        mock_httpx_client.post = AsyncMock(side_effect=httpx.RequestError("Connection failed"))
+        mock_httpx_client.request = AsyncMock(side_effect=httpx.RequestError("Connection failed"))
 
         with pytest.raises(InaraAPIError) as exc_info:
             await client.get_station("Sol", "Test Station")
@@ -176,7 +176,7 @@ class TestInaraClient:
     @pytest.mark.asyncio
     async def test_get_station_timeout(self, client, mock_httpx_client):
         """Test get_station handles timeout."""
-        mock_httpx_client.post = AsyncMock(side_effect=httpx.TimeoutException("Request timed out"))
+        mock_httpx_client.request = AsyncMock(side_effect=httpx.TimeoutException("Request timed out"))
 
         with pytest.raises(InaraAPIError) as exc_info:
             await client.get_station("Sol", "Test Station")
@@ -207,7 +207,7 @@ class TestInaraClient:
             ]
         }
         mock_response.raise_for_status = MagicMock()
-        mock_httpx_client.post = AsyncMock(return_value=mock_response)
+        mock_httpx_client.request = AsyncMock(return_value=mock_response)
 
         result = await client.search_system("Sol")
 
@@ -242,7 +242,7 @@ class TestInaraClient:
             ]
         }
         mock_response.raise_for_status = MagicMock()
-        mock_httpx_client.post = AsyncMock(return_value=mock_response)
+        mock_httpx_client.request = AsyncMock(return_value=mock_response)
 
         result = await client.search_system("Unknown System")
         assert result is None

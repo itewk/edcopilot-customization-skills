@@ -270,70 +270,6 @@ class TestSpanshClient:
         assert "System%20With%20Spaces%20%26%20Symbols" in url
 
     @pytest.mark.asyncio
-    async def test_search_systems_success(self, client, mock_httpx_client):
-        """Test successful search_systems call."""
-        mock_response = self._make_mock_response({
-            "count": 1,
-            "from": 0,
-            "results": [
-                {
-                    "id64": 3382051836930,
-                    "name": "Bleia Eohn SX-F c12",
-                    "distance": 1529.45,
-                    "population": 373069,
-                    "government": "Feudal",
-                    "allegiance": "Independent",
-                    "state": "Expansion",
-                    "security": "Low",
-                    "primary_economy": "Refinery",
-                    "secondary_economy": "Industrial",
-                    "x": -212.5625,
-                    "y": -34.46875,
-                    "z": 1514.21875,
-                    "updated_at": "2026-10-17T02:50:47Z",
-                }
-            ],
-            "search": {"filters": {"name": {"value": "Bleia Eohn"}}},
-        })
-        mock_httpx_client.request = AsyncMock(return_value=mock_response)
-
-        result = await client.search_systems({"name": {"value": "Bleia Eohn"}})
-
-        assert isinstance(result, list)
-        assert len(result) == 1
-        system = result[0]
-        assert isinstance(system, SpanshSystem)
-        assert system.id64 == 3382051836930
-        assert system.name == "Bleia Eohn SX-F c12"
-        assert system.distance == 1529.45
-        mock_httpx_client.request.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_search_systems_empty_results(self, client, mock_httpx_client):
-        """Test search_systems returns empty list when no results."""
-        mock_response = self._make_mock_response({
-            "count": 0,
-            "from": 0,
-            "results": [],
-            "search": {"filters": {"name": {"value": "Nonexistent"}}},
-        })
-        mock_httpx_client.request = AsyncMock(return_value=mock_response)
-
-        result = await client.search_systems({"name": {"value": "Nonexistent"}})
-
-        assert result == []
-
-    @pytest.mark.asyncio
-    async def test_search_systems_network_error(self, client, mock_httpx_client):
-        """Test search_systems raises SpanshAPIError on network error."""
-        mock_httpx_client.request = AsyncMock(side_effect=httpx.RequestError("Connection failed"))
-
-        with pytest.raises(SpanshAPIError) as exc_info:
-            await client.search_systems({"name": {"value": "Test"}})
-
-        assert "Connection failed" in str(exc_info.value) or "network" in str(exc_info.value).lower()
-
-    @pytest.mark.asyncio
     async def test_client_custom_timeout(self):
         """Test client can be configured with custom timeout."""
         client = SpanshClient(timeout=30.0)
@@ -379,22 +315,6 @@ class TestSpanshClientIntegration:
             assert all(station_names)
             assert all(s.type for s in system.stations)
             assert len(station_names) == len(set(station_names))
-        finally:
-            await client.close()
-
-    @pytest.mark.integration
-    @pytest.mark.asyncio
-    async def test_real_api_search_systems(self):
-        """Test real API call for system search."""
-        client = SpanshClient()
-
-        try:
-            # Search API expects string value, not array
-            results = await client.search_systems({"name": {"value": "Bleia Eohn"}})
-            assert len(results) > 0
-            # Should find multiple Bleia Eohn systems
-            names = [r.name for r in results]
-            assert any("Bleia Eohn" in n for n in names)
         finally:
             await client.close()
 

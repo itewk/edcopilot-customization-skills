@@ -204,19 +204,6 @@ def resolve_content_root(cwd: Path, env: Mapping[str, str]) -> Path:
     return _resolve_content_root(cwd, _env_value(env, "EDCG_CONTENT_DEFINITIONS_ROOT"))
 
 
-def content_root_state(root: Path) -> str:
-    """Return ``"blank"`` or ``"existing"`` for a content root.
-
-    A root is "existing" when it has a ``systems/`` directory or a config file;
-    anything else is blank (and blank is not an error). The layout knowledge
-    lives in :mod:`edcg.common.layout`; this name stays here for callers that
-    think of it as root resolution.
-    """
-    from edcg.common.layout import content_root_state as _state
-
-    return _state(root)
-
-
 def _config_file(root: Path) -> Path:
     return Path(root) / CONFIG_FILENAME
 

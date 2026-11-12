@@ -32,16 +32,13 @@ def _commit_marker_change(
     """Commit one marker pass for every changed tag."""
     if not GitRepo.is_repo(edcopilot_root):
         return None
-    repo = GitRepo(edcopilot_root)
-    try:
+    with GitRepo(edcopilot_root) as repo:
         repo.add_all()
         noun = "tag" if len(tags) == 1 else "tags"
         message = f"{COMMIT_PREFIX}: markdb {action} {len(tags)} {noun}"
         message = f"{message}\n\n" + "\n".join(tags)
         message = _append_co_author_trailer(message, commit_co_author)
         return repo.commit(message)
-    finally:
-        repo.close()
 
 
 def _apply_markers(

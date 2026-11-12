@@ -2,8 +2,9 @@
 
 Every subcommand is a thin, scriptable wrapper around one function in the
 ``edcg`` package. Data subcommands print JSON on stdout; ``version`` prints its
-value directly. Exit codes: 0 success, 1 check failure, 2 usage error. The scripts
-never pause for a gate; they do refuse impossible or invalid operations.
+value directly. Exit codes: 0 success, 1 check failure, 2 usage error; a usage
+error's message goes to stderr, so stdout stays parseable. The scripts never
+pause for a gate; they do refuse impossible or invalid operations.
 """
 
 from __future__ import annotations
@@ -27,12 +28,12 @@ from edcg.common.config import (
     CONFIG_FILENAME,
     ConfigError,
     ContentRootError,
-    content_root_state,
     get_config,
     resolve_content_root,
     resolve_edcopilot_root,
 )
-from edcg.content.custom_file import CUSTOM_FILE_NAME, write_content
+from edcg.common.layout import CUSTOM_FILE_NAME
+from edcg.content.custom_file import write_content
 from edcg.content.markdb import custom_file_exists, markdb_add, markdb_remove
 from edcg.content.rewrite import get_system_content, rewrite_tag
 from edcg.facts.facts import gather_facts
@@ -108,10 +109,8 @@ def _required(data: dict, key: str) -> Any:
 
 
 def _validation_payload(result) -> dict:
-    """``asdict`` the result, minus the Markdown table the CLI does not emit."""
-    payload = asdict(result)
-    payload.pop("rule_table", None)
-    return payload
+    """``asdict`` the validation result into the CLI's JSON payload."""
+    return asdict(result)
 
 
 # ---------------------------------------------------------------------------
@@ -258,7 +257,7 @@ def command_doctor(args: argparse.Namespace) -> int:
         passed &= _report_line(
             "content root",
             True,
-            f"{content_root} ({content_root_state(content_root)})",
+            f"{content_root} ({layout.content_root_state(content_root)})",
         )
 
     if content_root is None:
@@ -314,7 +313,7 @@ def command_doctor(args: argparse.Namespace) -> int:
 
 def command_init(args: argparse.Namespace) -> int:
     root = resolve_content_root(Path.cwd(), os.environ)
-    if content_root_state(root) == "existing":
+    if layout.content_root_state(root) == "existing":
         return _fail(
             f"{root} is already a content repository: it has a systems/ directory "
             f"or {CONFIG_FILENAME}"
@@ -334,14 +333,11 @@ def command_init(args: argparse.Namespace) -> int:
 
     git_info: dict[str, Any] = {"initialized": False, "commit": None}
     if not args.no_git:
-        repo = GitRepo.init(root)
-        try:
+        with GitRepo.init(root) as repo:
             # Stage only what init created. An existing repository may hold
             # unrelated untracked files; they must stay untracked.
             repo.add(CONFIG_FILENAME)
             commit = repo.commit("edcg: scaffold content repository")
-        finally:
-            repo.close()
         git_info = {"initialized": True, "commit": commit}
         if commit is None:
             return _fail(
@@ -366,7 +362,7 @@ def command_init(args: argparse.Namespace) -> int:
 
 
 def _facts_dict(facts) -> dict:
-    """The old gather-facts payload, with datetimes rendered as ISO 8601.
+    """The gather-facts payload, with datetimes rendered as ISO 8601.
 
     This is a *projection*, not a generic renderer: it deliberately omits
     ``raven_sites``/``journal_data``/``inara_stations``/``spansh_stations`` and
@@ -997,7 +993,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     try:
         return args.func(args)
     except UsageError as exc:
-        _emit({"error": str(exc)})
+        # A usage error is not a data answer: the message goes to stderr so a
+        # caller parsing stdout never mistakes it for a payload.
+        print(str(exc), file=sys.stderr)
         return 2
     except (FileNotFoundError, ValueError, ConfigError, OSError) as exc:
         return _fail(str(exc))

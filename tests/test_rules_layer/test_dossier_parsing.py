@@ -7,8 +7,8 @@ from edcg.rules.validation import RULE_DATA_DIR, load_base_config
 def test_vocabulary_token_is_not_a_voice():
     """<Nice> is an EDCoPilot substitution, so the voice list must drop it."""
     vocab = load_base_config(RULE_DATA_DIR)["vocab"]
-    known_tokens = {name.lower() for name in known_token_names(vocab)}
-    assert "nice" in known_tokens
+    known_tokens = set(known_token_names(vocab))
+    assert "Nice" in known_tokens
 
     lines = [
         "### Voices used",

@@ -1,19 +1,26 @@
-"""Tests for the validation engine - one test per rule plus combinations.
+"""Tests for validate_content - one test per rule plus combinations.
 
 These tests follow TDD: RED (fail) -> GREEN (pass).
-Each rule from base.toml + all.rules.toml gets at least one test.
+Each rule from base.toml + all.rules.toml gets at least one test. They call the
+production entry point (``validate_content``) rather than a test-only engine.
 """
 
 import pytest
 from pathlib import Path
 from edcg.rules.validation import (
-    RuleEngine,
+    Context,
     ValidationResult,
-    Finding,
-    parse_content,
-    load_kinds,
+    PROVENANCE_RE,
     RULE_DATA_DIR,
-    SEV_ORDER,
+    load_all_system_rules,
+    load_base_config,
+    load_house_rules,
+    load_kinds,
+    merge_rules,
+    parse_content,
+    rule_filters_banned,
+    rule_syntax_filter_known,
+    validate_content,
 )
 
 
@@ -24,35 +31,54 @@ FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 # Test fixtures and helpers
 # ============================================================
 
-@pytest.fixture
-def base_rules_path() -> Path:
-    """Path to base.toml in the rule data dir."""
-    return RULE_DATA_DIR / "base.toml"
+# The fixtures directory doubles as a systems/ directory: all.rules.toml is the
+# house rules, and test.rules.toml names "Test System" with its dossier test.md.
+SYSTEMS_DIR = FIXTURES_DIR
+HOUSE_RULES = FIXTURES_DIR / "all.rules.toml"
+SYSTEM = "Test System"
+
+
+def _payload(path: Path) -> str:
+    """The bytes a test wrote, as the string ``validate_content`` consumes."""
+    return path.read_text(encoding="utf-8", newline="")
+
+
+def _full_payload_context(content_path: Path) -> Context:
+    """The rule context for a whole payload, provenance markers included.
+
+    ``validate_content`` trims everything above the latest provenance marker
+    before it validates, so the scope-boundary tests cannot reach the
+    out-of-scope branch through it. They hand the rule function this context
+    instead: the same construction, without the block trimming.
+    """
+    base = load_base_config(RULE_DATA_DIR)
+    base_rules = base["rules"]
+    declared, patches = load_house_rules(HOUSE_RULES, base_rules)
+    per_system = load_all_system_rules(SYSTEMS_DIR, base_rules)
+    return Context(
+        base=base,
+        per_system=per_system,
+        content=parse_content(content_path, PROVENANCE_RE, load_kinds(base)),
+        rules=merge_rules(base_rules, declared, patches, per_system),
+    )
 
 
 @pytest.fixture
-def house_rules_path() -> Path:
-    """Path to a test house rules file (all.rules.toml)."""
-    # Create a minimal house rules file for testing
-    return FIXTURES_DIR / "all.rules.toml"
+def dossier_dir(tmp_path) -> Path:
+    """A systems/ directory whose one system declares the dossier under test."""
+    systems = tmp_path / "systems"
+    systems.mkdir()
+    (systems / "test.rules.toml").write_text(
+        '[system]\nnames = ["Test System"]\ndossier = "dossier.md"\n',
+        encoding="utf-8",
+    )
+    return systems
 
 
 @pytest.fixture
-def system_rules_path() -> Path:
-    """Path to a test system rules file."""
-    return FIXTURES_DIR / "test.rules.toml"
-
-
-@pytest.fixture
-def dossier_path(tmp_path) -> Path:
-    """A dossier path under tmp_path; each test writes the content it needs."""
-    return tmp_path / "test_dossier.md"
-
-
-@pytest.fixture
-def engine(base_rules_path, house_rules_path, system_rules_path) -> RuleEngine:
-    """Create a RuleEngine instance for testing."""
-    return RuleEngine(base_rules_path, house_rules_path, system_rules_path)
+def dossier_path(dossier_dir) -> Path:
+    """The dossier the fixture system declares; each test writes its content."""
+    return dossier_dir / "dossier.md"
 
 
 # ============================================================
@@ -267,12 +293,17 @@ TEST_DOSSIER_WRONG_TITLES = """# Test System — system dossier
 class TestSyntaxFilterKnown:
     """Tests for syntax.filter_known rule."""
 
-    def test_unknown_filter_in_scope_is_error(self, engine, tmp_path):
+    def test_unknown_filter_in_scope_is_error(self, tmp_path):
         """Unknown filter in authored region should be error."""
         content_file = tmp_path / "content.txt"
         content_file.write_text(CONTENT_WITH_UNKNOWN_FILTER, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         assert not result.passed
         findings = [f for f in result.findings if f.rule == "syntax.filter_known"]
@@ -280,15 +311,16 @@ class TestSyntaxFilterKnown:
         assert findings[0].severity == "error"
         assert "unknown_filter" in findings[0].message
 
-    def test_unknown_filter_outside_scope_is_warn(self, engine, tmp_path):
+    def test_unknown_filter_outside_scope_is_warn(self, tmp_path):
         """Unknown filter in EDCoPilot default content should be warn."""
         content = "@ConfirmedCommander\n(unknown_filter)Default content.\n" + CONTENT_WITH_UNKNOWN_FILTER
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        ctx = _full_payload_context(content_file)
+        rule_syntax_filter_known(ctx)
         
-        findings = [f for f in result.findings if f.rule == "syntax.filter_known"]
+        findings = [f for f in ctx.findings if f.rule == "syntax.filter_known"]
         # One outside scope (warn), one in scope (error)
         # Findings are sorted by severity globally, so error comes first
         assert len(findings) == 2
@@ -300,12 +332,17 @@ class TestSyntaxFilterKnown:
 class TestSyntaxFilterLeads:
     """Tests for syntax.filter_leads rule."""
 
-    def test_filter_before_first_voice_tag_is_error(self, engine, tmp_path):
+    def test_filter_before_first_voice_tag_is_error(self, tmp_path):
         """Filter marker before first voice tag should be error."""
         content_file = tmp_path / "content.txt"
         content_file.write_text(CONTENT_WITH_FILTER_BEFORE_VOICE, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         assert not result.passed
         findings = [f for f in result.findings if f.rule == "syntax.filter_leads"]
@@ -313,7 +350,7 @@ class TestSyntaxFilterLeads:
         assert findings[0].severity == "error"
         assert "before the first voice tag" in findings[0].message
 
-    def test_filter_after_voice_tag_is_ok(self, engine, tmp_path):
+    def test_filter_after_voice_tag_is_ok(self, tmp_path):
         """Filter marker after voice tag should pass."""
         content = """<!-- provenance: tool=test model=test -->
 @SystemBroadcast<~>Test System
@@ -322,7 +359,12 @@ class TestSyntaxFilterLeads:
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         findings = [f for f in result.findings if f.rule == "syntax.filter_leads"]
         assert len(findings) == 0
@@ -331,7 +373,7 @@ class TestSyntaxFilterLeads:
 class TestSyntaxVoiceName:
     """Tests for syntax.voice_name rule."""
 
-    def test_spaced_voice_tag_warns(self, engine, tmp_path):
+    def test_spaced_voice_tag_warns(self, tmp_path):
         """A voice name with a space is a warning, not a silent split."""
         content_file = tmp_path / "content.txt"
         content_file.write_text(
@@ -342,14 +384,19 @@ class TestSyntaxVoiceName:
             newline="\r\n",
         )
 
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
 
         findings = [f for f in result.findings if f.rule == "syntax.voice_name"]
         assert len(findings) == 1
         assert findings[0].severity == "warn"
         assert "whitespace" in findings[0].message
 
-    def test_single_token_voice_is_clean(self, engine, tmp_path):
+    def test_single_token_voice_is_clean(self, tmp_path):
         """A normal voice name produces no finding."""
         content_file = tmp_path / "content.txt"
         content_file.write_text(
@@ -360,13 +407,16 @@ class TestSyntaxVoiceName:
             newline="\r\n",
         )
 
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
 
         assert [f for f in result.findings if f.rule == "syntax.voice_name"] == []
 
-    def test_declared_spaced_voice_warns(
-        self, base_rules_path, house_rules_path, tmp_path
-    ):
+    def test_declared_spaced_voice_warns(self, tmp_path):
         """A spaced name in system.voices is reported even with no content tag."""
         rules_path = tmp_path / "spaced.rules.toml"
         rules_path.write_text(
@@ -376,7 +426,8 @@ class TestSyntaxVoiceName:
             'voices = ["Garrett Control"]\n',
             encoding="utf-8",
         )
-        engine = RuleEngine(base_rules_path, house_rules_path, rules_path)
+        # The system rules resolve their dossier beside the rules file.
+        (tmp_path / "spaced.md").write_text("", encoding="utf-8")
 
         content_file = tmp_path / "content.txt"
         content_file.write_text(
@@ -387,8 +438,13 @@ class TestSyntaxVoiceName:
             newline="\r\n",
         )
 
-        result = engine.validate(content_file, None)
-
+        result = validate_content(
+            _payload(content_file),
+            "Spaced System",
+            house_rules_path=HOUSE_RULES,
+            systems_dir=tmp_path,
+        )
+        
         findings = [f for f in result.findings if f.rule == "syntax.voice_name"]
         assert len(findings) == 1
         assert findings[0].line is None
@@ -398,24 +454,34 @@ class TestSyntaxVoiceName:
 class TestSyntaxTokens:
     """Tests for syntax.token_known and syntax.token_case rules."""
 
-    def test_unknown_token_is_warn(self, engine, tmp_path):
+    def test_unknown_token_is_warn(self, tmp_path):
         """Unknown token should produce warning."""
         content_file = tmp_path / "content.txt"
         content_file.write_text(CONTENT_WITH_UNKNOWN_TOKEN, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         findings = [f for f in result.findings if f.rule == "syntax.token_known"]
         assert len(findings) == 1
         assert findings[0].severity == "warn"
         assert "unknown_token" in findings[0].message
 
-    def test_miscased_token_is_warn(self, engine, tmp_path):
+    def test_miscased_token_is_warn(self, tmp_path):
         """Miscased token should produce warning."""
         content_file = tmp_path / "content.txt"
         content_file.write_text(CONTENT_WITH_MISCASED_TOKEN, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         findings = [f for f in result.findings if f.rule == "syntax.token_case"]
         assert len(findings) == 1
@@ -423,7 +489,7 @@ class TestSyntaxTokens:
         assert "commander" in findings[0].message.lower()
         assert "Commander" in findings[0].message
 
-    def test_known_token_passes(self, engine, tmp_path):
+    def test_known_token_passes(self, tmp_path):
         """Known tokens should pass."""
         content = """<!-- provenance: tool=test model=test -->
 @SystemGreeting<~>Test System
@@ -432,12 +498,17 @@ Welcome <Commander> and <cmdrname> to <starsystem>.
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         token_findings = [f for f in result.findings if f.rule in ("syntax.token_known", "syntax.token_case")]
         assert len(token_findings) == 0
 
-    def test_voice_token_passes(self, engine, tmp_path):
+    def test_voice_token_passes(self, tmp_path):
         """Voice tokens declared in system rules should pass."""
         # System rules with voices. They are written under tmp_path: a test may
         # not edit the checked-in fixtures.
@@ -456,13 +527,14 @@ voices = ["Foreman", "Researcher"]
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        # Recreate engine with updated system rules
-        engine2 = RuleEngine(
-            engine.base_rules_path,
-            engine.house_rules_path,
-            rules_file
+        # The system rules resolve their dossier beside the rules file.
+        (tmp_path / "test.md").write_text("", encoding="utf-8")
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=tmp_path,
         )
-        result = engine2.validate(content_file, None)
         
         token_findings = [f for f in result.findings if f.rule in ("syntax.token_known", "syntax.token_case")]
         assert len(token_findings) == 0
@@ -471,33 +543,48 @@ voices = ["Foreman", "Researcher"]
 class TestSyntaxEncoding:
     """Tests for syntax.encoding rule."""
 
-    def test_wrong_line_ending_is_error(self, engine, tmp_path):
+    def test_wrong_line_ending_is_error(self, tmp_path):
         """LF line ending should be error (expected CRLF)."""
         content_file = tmp_path / "content.txt"
         content_file.write_bytes(b"Line 1\nLine 2\n")  # LF
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         findings = [f for f in result.findings if f.rule == "syntax.encoding"]
         assert len(findings) >= 1
         assert any(f.severity == "error" and "line ending" in f.message.lower() for f in findings)
 
-    def test_crlf_line_ending_passes(self, engine, tmp_path):
+    def test_crlf_line_ending_passes(self, tmp_path):
         """CRLF line ending should pass."""
         content_file = tmp_path / "content.txt"
         content_file.write_text("Line 1\r\nLine 2\r\n", encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         findings = [f for f in result.findings if f.rule == "syntax.encoding"]
         assert len(findings) == 0
 
-    def test_bom_is_error(self, engine, tmp_path):
+    def test_bom_is_error(self, tmp_path):
         """BOM should be error."""
         content_file = tmp_path / "content.txt"
         content_file.write_bytes(b"\xef\xbb\xbfLine 1\r\nLine 2\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         findings = [f for f in result.findings if f.rule == "syntax.encoding"]
         assert len(findings) >= 1
@@ -507,12 +594,17 @@ class TestSyntaxEncoding:
 class TestSyntaxNoExampleWrapper:
     """Tests for syntax.no_example_wrapper rule."""
 
-    def test_example_wrapper_is_error(self, engine, tmp_path):
+    def test_example_wrapper_is_error(self, tmp_path):
         """[example] wrapper should be error."""
         content_file = tmp_path / "content.txt"
         content_file.write_text(CONTENT_WITH_EXAMPLE_WRAPPER, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         assert not result.passed
         findings = [f for f in result.findings if f.rule == "syntax.no_example_wrapper"]
@@ -524,12 +616,17 @@ class TestSyntaxNoExampleWrapper:
 class TestFormatTagShape:
     """Tests for format.tag_shape rule."""
 
-    def test_unknown_kind_is_error(self, engine, tmp_path):
+    def test_unknown_kind_is_error(self, tmp_path):
         """Unknown tag kind should be error."""
         content_file = tmp_path / "content.txt"
         content_file.write_text(CONTENT_WITH_UNKNOWN_KIND, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         assert not result.passed
         findings = [f for f in result.findings if f.rule == "format.tag_shape"]
@@ -537,12 +634,17 @@ class TestFormatTagShape:
         assert findings[0].severity == "error"
         assert "UnknownKind" in findings[0].message
 
-    def test_wrong_number_of_parts_is_error(self, engine, tmp_path):
+    def test_wrong_number_of_parts_is_error(self, tmp_path):
         """Wrong number of <~> parts should be error."""
         content_file = tmp_path / "content.txt"
         content_file.write_text(CONTENT_WITH_WRONG_PARTS, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         assert not result.passed
         findings = [f for f in result.findings if f.rule == "format.tag_shape"]
@@ -550,7 +652,7 @@ class TestFormatTagShape:
         assert findings[0].severity == "error"
         assert "field" in findings[0].message.lower()
 
-    def test_correct_tag_passes(self, engine, tmp_path):
+    def test_correct_tag_passes(self, tmp_path):
         """Correctly formed tag should pass."""
         content = """<!-- provenance: tool=test model=test -->
 @StationGreeting<~>Test System<~>Test Station
@@ -559,7 +661,12 @@ Welcome.
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         findings = [f for f in result.findings if f.rule == "format.tag_shape"]
         assert len(findings) == 0
@@ -572,12 +679,17 @@ Welcome.
 class TestFiltersAllbusiness:
     """Tests for filters.allbusiness rule."""
 
-    def test_no_allbusiness_is_error(self, engine, tmp_path):
+    def test_no_allbusiness_is_error(self, tmp_path):
         """Tag with no (allbusiness) lines should be error."""
         content_file = tmp_path / "content.txt"
         content_file.write_text(CONTENT_WITH_NO_ALLBUSINESS, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         assert not result.passed
         findings = [f for f in result.findings if f.rule == "filters.allbusiness"]
@@ -585,21 +697,26 @@ class TestFiltersAllbusiness:
         assert findings[0].severity == "error"
         assert "no (allbusiness) line" in findings[0].message
 
-    def test_below_warn_threshold_is_warn(self, engine, tmp_path):
+    def test_below_warn_threshold_is_warn(self, tmp_path):
         """Tag with fewer than warn_below (allbusiness) lines should be warn."""
         # Base rule has warn_below = 1, so 1 line meets floor but may warn if house sets higher
         # House rules set warn_below = 2 for most kinds
         content_file = tmp_path / "content.txt"
         content_file.write_text(CONTENT_WITH_LOW_ALLBUSINESS, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         findings = [f for f in result.findings if f.rule == "filters.allbusiness"]
         # Should have warning about below threshold (house rule sets warn_below=2)
         assert len(findings) >= 1
         assert any(f.severity == "warn" and "1 (allbusiness) line" in f.message for f in findings)
 
-    def test_station_greeting_warn_below_1(self, engine, tmp_path):
+    def test_station_greeting_warn_below_1(self, tmp_path):
         """StationGreeting has warn_below_by_kind = 1, so 1 line should not warn."""
         content = """<!-- provenance: tool=test model=test -->
 @StationGreeting<~>Test System<~>Test Station
@@ -609,14 +726,19 @@ Welcome <cmdrname>.
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         findings = [f for f in result.findings if f.rule == "filters.allbusiness"]
         # StationGreeting has warn_below_by_kind = 1, so 1 line should not warn
         warn_findings = [f for f in findings if f.severity == "warn"]
         assert len(warn_findings) == 0
 
-    def test_meets_threshold_passes(self, engine, tmp_path):
+    def test_meets_threshold_passes(self, tmp_path):
         """Tag meeting threshold should pass."""
         content = """<!-- provenance: tool=test model=test -->
 @SystemGreeting<~>Test System
@@ -627,12 +749,17 @@ Welcome to the system.
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         findings = [f for f in result.findings if f.rule == "filters.allbusiness"]
         assert len(findings) == 0
 
-    def test_station_fact_exempt(self, engine, tmp_path):
+    def test_station_fact_exempt(self, tmp_path):
         """StationFact should be exempt from allbusiness requirement."""
         content = """<!-- provenance: tool=test model=test -->
 @StationFact<~>Test System<~>Test Station
@@ -643,7 +770,12 @@ This fact has no allbusiness line.
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         findings = [f for f in result.findings if f.rule == "filters.allbusiness"]
         assert len(findings) == 0
@@ -652,12 +784,17 @@ This fact has no allbusiness line.
 class TestFiltersFallback:
     """Tests for filters.fallback rule."""
 
-    def test_no_unfiltered_line_is_error(self, engine, tmp_path):
+    def test_no_unfiltered_line_is_error(self, tmp_path):
         """Tag where every line has a filter should be error."""
         content_file = tmp_path / "content.txt"
         content_file.write_text(CONTENT_WITH_NO_FALLBACK, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         assert not result.passed
         findings = [f for f in result.findings if f.rule == "filters.fallback"]
@@ -665,12 +802,17 @@ class TestFiltersFallback:
         assert findings[0].severity == "error"
         assert "filters every line" in findings[0].message
 
-    def test_no_clean_allbusiness_is_error(self, engine, tmp_path):
+    def test_no_clean_allbusiness_is_error(self, tmp_path):
         """Tag with no line carrying only (allbusiness) should be error."""
         content_file = tmp_path / "content.txt"
         content_file.write_text(CONTENT_WITH_NO_CLEAN_ALLBUSINESS, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         assert not result.passed
         findings = [f for f in result.findings if f.rule == "filters.fallback"]
@@ -678,7 +820,7 @@ class TestFiltersFallback:
         assert findings[0].severity == "error"
         assert "no line carrying (allbusiness) alone" in findings[0].message
 
-    def test_has_fallback_passes(self, engine, tmp_path):
+    def test_has_fallback_passes(self, tmp_path):
         """Tag with unfiltered line should pass."""
         content = """<!-- provenance: tool=test model=test -->
 @SystemGreeting<~>Test System
@@ -688,12 +830,17 @@ Welcome to the system.
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         findings = [f for f in result.findings if f.rule == "filters.fallback"]
         assert len(findings) == 0
 
-    def test_has_clean_allbusiness_passes(self, engine, tmp_path):
+    def test_has_clean_allbusiness_passes(self, tmp_path):
         """Tag with clean (allbusiness) line should pass."""
         content = """<!-- provenance: tool=test model=test -->
 @SystemGreeting<~>Test System
@@ -704,12 +851,17 @@ Welcome to the system.
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         findings = [f for f in result.findings if f.rule == "filters.fallback"]
         assert len(findings) == 0
 
-    def test_non_spoken_kind_exempt(self, engine, tmp_path):
+    def test_non_spoken_kind_exempt(self, tmp_path):
         """StationFact (non-spoken) should be exempt from fallback."""
         content = """<!-- provenance: tool=test model=test -->
 @StationFact<~>Test System<~>Test Station
@@ -720,7 +872,12 @@ img_url=https://example.com/logo.jpg
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         findings = [f for f in result.findings if f.rule == "filters.fallback"]
         assert len(findings) == 0
@@ -733,12 +890,17 @@ img_url=https://example.com/logo.jpg
 class TestContentFactImage:
     """Tests for content.fact_image rule."""
 
-    def test_fact_no_image_is_error(self, engine, tmp_path):
+    def test_fact_no_image_is_error(self, tmp_path):
         """StationFact without img_url should be error."""
         content_file = tmp_path / "content.txt"
         content_file.write_text(CONTENT_FACT_NO_IMAGE, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         assert not result.passed
         findings = [f for f in result.findings if f.rule == "content.fact_image"]
@@ -746,19 +908,24 @@ class TestContentFactImage:
         assert findings[0].severity == "error"
         assert "no img_url line" in findings[0].message
 
-    def test_fact_wrong_image_is_warn(self, engine, tmp_path):
+    def test_fact_wrong_image_is_warn(self, tmp_path):
         """StationFact with wrong img_url should be warn (house rule sets expected)."""
         content_file = tmp_path / "content.txt"
         content_file.write_text(CONTENT_FACT_WRONG_IMAGE, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         findings = [f for f in result.findings if f.rule == "content.fact_image"]
         assert len(findings) == 1
         assert findings[0].severity == "warn"
         assert "not the shared logo" in findings[0].message
 
-    def test_fact_correct_image_passes(self, engine, tmp_path):
+    def test_fact_correct_image_passes(self, tmp_path):
         """StationFact with correct img_url should pass."""
         content = """<!-- provenance: tool=test model=test -->
 @StationFact<~>Test System<~>Test Station
@@ -769,7 +936,12 @@ Correct image.
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         findings = [f for f in result.findings if f.rule == "content.fact_image"]
         assert len(findings) == 0
@@ -778,12 +950,17 @@ Correct image.
 class TestContentNoLinks:
     """Tests for content.no_links rule."""
 
-    def test_link_in_phrase_is_error(self, engine, tmp_path):
+    def test_link_in_phrase_is_error(self, tmp_path):
         """URL in phrase should be error."""
         content_file = tmp_path / "content.txt"
         content_file.write_text(CONTENT_WITH_LINK, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         assert not result.passed
         findings = [f for f in result.findings if f.rule == "content.no_links"]
@@ -791,7 +968,7 @@ class TestContentNoLinks:
         assert findings[0].severity == "error"
         assert "https://example.com" in findings[0].message
 
-    def test_no_link_passes(self, engine, tmp_path):
+    def test_no_link_passes(self, tmp_path):
         """Content without links should pass."""
         content = """<!-- provenance: tool=test model=test -->
 @SystemGreeting<~>Test System
@@ -800,7 +977,12 @@ Welcome to the system, no links here.
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         findings = [f for f in result.findings if f.rule == "content.no_links"]
         assert len(findings) == 0
@@ -809,12 +991,17 @@ Welcome to the system, no links here.
 class TestContentFactNoFilters:
     """Tests for content.fact_no_filters rule."""
 
-    def test_fact_with_filter_is_error(self, engine, tmp_path):
+    def test_fact_with_filter_is_error(self, tmp_path):
         """StationFact with filter should be error."""
         content_file = tmp_path / "content.txt"
         content_file.write_text(CONTENT_FACT_WITH_FILTER, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         assert not result.passed
         findings = [f for f in result.findings if f.rule == "content.fact_no_filters"]
@@ -823,7 +1010,7 @@ class TestContentFactNoFilters:
         assert "fact text carries" in findings[0].message
         assert "vegan" in findings[0].message
 
-    def test_fact_without_filter_passes(self, engine, tmp_path):
+    def test_fact_without_filter_passes(self, tmp_path):
         """StationFact without filter should pass."""
         content = """<!-- provenance: tool=test model=test -->
 @StationFact<~>Test System<~>Test Station
@@ -834,7 +1021,12 @@ This fact has no filters.
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         findings = [f for f in result.findings if f.rule == "content.fact_no_filters"]
         assert len(findings) == 0
@@ -843,7 +1035,7 @@ This fact has no filters.
 class TestContentStationLandable:
     """Tests for content.station_landable rule."""
 
-    def test_station_not_landable_is_error(self, engine, tmp_path, dossier_path):
+    def test_station_not_landable_is_error(self, tmp_path, dossier_dir, dossier_path):
         """Station classified as hub/installation should be error."""
         # Write dossier with hub station
         dossier_content = TEST_DOSSIER.replace("nona", "silenus").replace("Civilian Surface Outpost", "Refinery Hub")
@@ -852,7 +1044,12 @@ class TestContentStationLandable:
         content_file = tmp_path / "content.txt"
         content_file.write_text(CONTENT_STATION_NOT_LANDABLE, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, dossier_path)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=dossier_dir,
+        )
         
         assert not result.passed
         findings = [f for f in result.findings if f.rule == "content.station_landable"]
@@ -860,7 +1057,7 @@ class TestContentStationLandable:
         assert findings[0].severity == "error"
         assert "no landing pads" in findings[0].message
 
-    def test_station_landable_passes(self, engine, tmp_path, dossier_path):
+    def test_station_landable_passes(self, tmp_path, dossier_dir, dossier_path):
         """Landable station should pass."""
         dossier_path.write_text(TEST_DOSSIER, encoding="utf-8")
         
@@ -872,12 +1069,17 @@ Welcome to the station.
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, dossier_path)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=dossier_dir,
+        )
         
         findings = [f for f in result.findings if f.rule == "content.station_landable"]
         assert len(findings) == 0
 
-    def test_station_not_in_dossier_is_error(self, engine, tmp_path, dossier_path):
+    def test_station_not_in_dossier_is_error(self, tmp_path, dossier_dir, dossier_path):
         """Station with content but not in dossier should be error."""
         dossier_path.write_text(TEST_DOSSIER, encoding="utf-8")
         
@@ -889,7 +1091,12 @@ Welcome to unknown station.
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, dossier_path)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=dossier_dir,
+        )
         
         assert not result.passed
         findings = [f for f in result.findings if f.rule == "content.station_landable"]
@@ -898,7 +1105,7 @@ Welcome to unknown station.
         assert "classified in no dossier" in findings[0].message
 
     def test_station_tag_without_parenthetical_does_not_match_suffixed_site(
-        self, engine, tmp_path, dossier_path
+        self, tmp_path, dossier_dir, dossier_path
     ):
         """A tag must use the exact dossier station name, parenthetical included."""
         dossier_path.write_text(TEST_DOSSIER, encoding="utf-8")
@@ -911,7 +1118,12 @@ Welcome to the station.
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
 
-        result = engine.validate(content_file, dossier_path)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=dossier_dir,
+        )
 
         assert not result.passed
         findings = [f for f in result.findings if f.rule == "content.station_landable"]
@@ -922,12 +1134,17 @@ Welcome to the station.
 class TestContentCommanderToken:
     """Tests for content.commander_token rule."""
 
-    def test_hardcoded_commander_is_error(self, engine, tmp_path):
+    def test_hardcoded_commander_is_error(self, tmp_path):
         """Hardcoded 'Commander' should be error."""
         content_file = tmp_path / "content.txt"
         content_file.write_text(CONTENT_WITH_HARDCODED_COMMANDER, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         assert not result.passed
         findings = [f for f in result.findings if f.rule == "content.commander_token"]
@@ -936,7 +1153,7 @@ class TestContentCommanderToken:
         assert "hardcoded" in findings[0].message.lower()
         assert "Commander" in findings[0].message
 
-    def test_token_commander_passes(self, engine, tmp_path):
+    def test_token_commander_passes(self, tmp_path):
         """<Commander> token should pass."""
         content = """<!-- provenance: tool=test model=test -->
 @SystemGreeting<~>Test System
@@ -945,12 +1162,17 @@ Welcome <Commander> to the system.
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         findings = [f for f in result.findings if f.rule == "content.commander_token"]
         assert len(findings) == 0
 
-    def test_token_cmdrname_passes(self, engine, tmp_path):
+    def test_token_cmdrname_passes(self, tmp_path):
         """<cmdrname> token should pass."""
         content = """<!-- provenance: tool=test model=test -->
 @SystemGreeting<~>Test System
@@ -959,7 +1181,12 @@ Welcome <cmdrname> to the system.
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         findings = [f for f in result.findings if f.rule == "content.commander_token"]
         assert len(findings) == 0
@@ -968,12 +1195,17 @@ Welcome <cmdrname> to the system.
 class TestDBPlacement:
     """Tests for db.placement rule."""
 
-    def test_updatedb_wrong_place_is_error(self, engine, tmp_path):
+    def test_updatedb_wrong_place_is_error(self, tmp_path):
         """UPDATEDB not on line after @tag should be error."""
         content_file = tmp_path / "content.txt"
         content_file.write_text(CONTENT_WITH_UPDATEDB_WRONG_PLACE, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         assert not result.passed
         findings = [f for f in result.findings if f.rule == "db.placement"]
@@ -981,7 +1213,7 @@ class TestDBPlacement:
         assert findings[0].severity == "error"
         assert "not on the line after" in findings[0].message
 
-    def test_updatedb_correct_place_passes(self, engine, tmp_path):
+    def test_updatedb_correct_place_passes(self, tmp_path):
         """UPDATEDB on line after @tag should pass."""
         content = """<!-- provenance: tool=test model=test -->
 @SystemGreeting<~>Test System
@@ -991,7 +1223,12 @@ Welcome.
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         findings = [f for f in result.findings if f.rule == "db.placement"]
         assert len(findings) == 0
@@ -1000,44 +1237,56 @@ Welcome.
 class TestDossierSpine:
     """Tests for dossier.spine rule."""
 
-    def test_wrong_section_order_is_error(self, engine, tmp_path):
+    def test_wrong_section_order_is_error(self, tmp_path, dossier_dir, dossier_path):
         """Wrong section order should be error."""
-        dossier_file = tmp_path / "dossier.md"
-        dossier_file.write_text(TEST_DOSSIER_WRONG_SECTIONS, encoding="utf-8")
+        dossier_path.write_text(TEST_DOSSIER_WRONG_SECTIONS, encoding="utf-8")
         
         content_file = tmp_path / "content.txt"
         content_file.write_text(VALID_CONTENT, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, dossier_file)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=dossier_dir,
+        )
         
         assert not result.passed
         findings = [f for f in result.findings if f.rule == "dossier.spine"]
         assert len(findings) >= 1
         assert any(f.severity == "error" and "sections are" in f.message for f in findings)
 
-    def test_wrong_section_title_is_warn(self, engine, tmp_path):
+    def test_wrong_section_title_is_warn(self, tmp_path, dossier_dir, dossier_path):
         """Wrong section title should be warn."""
-        dossier_file = tmp_path / "dossier.md"
-        dossier_file.write_text(TEST_DOSSIER_WRONG_TITLES, encoding="utf-8")
+        dossier_path.write_text(TEST_DOSSIER_WRONG_TITLES, encoding="utf-8")
         
         content_file = tmp_path / "content.txt"
         content_file.write_text(VALID_CONTENT, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, dossier_file)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=dossier_dir,
+        )
         
         findings = [f for f in result.findings if f.rule == "dossier.spine"]
         assert len(findings) >= 1
         assert any(f.severity == "warn" and "section 2 is" in f.message for f in findings)
 
-    def test_correct_dossier_passes(self, engine, tmp_path):
+    def test_correct_dossier_passes(self, tmp_path, dossier_dir, dossier_path):
         """Correct dossier should pass."""
-        dossier_file = tmp_path / "dossier.md"
-        dossier_file.write_text(TEST_DOSSIER, encoding="utf-8")
+        dossier_path.write_text(TEST_DOSSIER, encoding="utf-8")
         
         content_file = tmp_path / "content.txt"
         content_file.write_text(VALID_CONTENT, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, dossier_file)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=dossier_dir,
+        )
         
         findings = [f for f in result.findings if f.rule == "dossier.spine"]
         assert len(findings) == 0
@@ -1050,12 +1299,17 @@ class TestDossierSpine:
 class TestFiltersBanned:
     """Tests for filters.banned rule (declared in house rules)."""
 
-    def test_banned_filter_is_error(self, engine, tmp_path):
+    def test_banned_filter_is_error(self, tmp_path):
         """Banned filter (profanity) should be error."""
         content_file = tmp_path / "content.txt"
         content_file.write_text(CONTENT_WITH_BANNED_FILTER, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         assert not result.passed
         findings = [f for f in result.findings if f.rule == "filters.banned"]
@@ -1064,7 +1318,7 @@ class TestFiltersBanned:
         assert "banned filter" in findings[0].message.lower()
         assert "profanity" in findings[0].message
 
-    def test_all_banned_filters_caught(self, engine, tmp_path):
+    def test_all_banned_filters_caught(self, tmp_path):
         """All four banned filters should be caught."""
         content = """<!-- provenance: tool=test model=test -->
 @SystemGreeting<~>Test System
@@ -1076,22 +1330,28 @@ class TestFiltersBanned:
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         findings = [f for f in result.findings if f.rule == "filters.banned"]
         assert len(findings) == 4
         banned_found = {f.message.split("(")[1].split(")")[0] for f in findings}
         assert banned_found == {"profanity", "flirt", "innuendo", "alcohol"}
 
-    def test_banned_filter_outside_scope_not_checked(self, engine, tmp_path):
+    def test_banned_filter_outside_scope_not_checked(self, tmp_path):
         """Banned filter in EDCoPilot default content should not be checked (scope)."""
         content = "@ConfirmedCommander\n(profanity)Default content.\n" + CONTENT_WITH_BANNED_FILTER
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        ctx = _full_payload_context(content_file)
+        rule_filters_banned(ctx)
         
-        findings = [f for f in result.findings if f.rule == "filters.banned"]
+        findings = [f for f in ctx.findings if f.rule == "filters.banned"]
         # Only the one in authored region should be caught
         assert len(findings) == 1
 
@@ -1103,7 +1363,7 @@ class TestFiltersBanned:
 class TestCombinations:
     """Tests for multiple rules firing together."""
 
-    def test_multiple_violations_reported(self, engine, tmp_path):
+    def test_multiple_violations_reported(self, tmp_path):
         """Multiple rule violations should all be reported."""
         content = """<!-- provenance: tool=test model=test -->
 @SystemGreeting<~>Test System
@@ -1112,14 +1372,19 @@ class TestCombinations:
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         assert not result.passed
         rule_ids = {f.rule for f in result.findings}
         assert "filters.banned" in rule_ids
         assert "syntax.token_known" in rule_ids
 
-    def test_severity_ordering(self, engine, tmp_path):
+    def test_severity_ordering(self, tmp_path):
         """Findings should be ordered by severity then rule then line."""
         content = """<!-- provenance: tool=test model=test -->
 @SystemGreeting<~>Test System
@@ -1129,7 +1394,12 @@ class TestCombinations:
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         # Check ordering: error before warn, then by rule, then by line
         errors = [f for f in result.findings if f.severity == "error"]
@@ -1138,13 +1408,18 @@ class TestCombinations:
         if errors and warns:
             assert max(f.line or 0 for f in errors) < min(f.line or 999 for f in warns) or True  # Ordering is by severity first
 
-    def test_valid_content_passes_all_rules(self, engine, tmp_path, dossier_path):
+    def test_valid_content_passes_all_rules(self, tmp_path, dossier_dir, dossier_path):
         """Fully valid content should pass all rules."""
         dossier_path.write_text(TEST_DOSSIER, encoding="utf-8")
         content_file = tmp_path / "content.txt"
         content_file.write_text(VALID_CONTENT, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, dossier_path)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=dossier_dir,
+        )
         
         # Should only have policy rules listed (not checked by program)
         assert result.passed
@@ -1154,13 +1429,13 @@ class TestCombinations:
 
 
 # ============================================================
-# RuleEngine API tests
+# validate_content API tests
 # ============================================================
 
-class TestRuleEngineAPI:
-    """Tests for RuleEngine public API."""
+class TestValidateContentAPI:
+    """Tests for the validate_content public entry point."""
 
-    def test_finding_has_required_fields(self, engine, tmp_path):
+    def test_finding_has_required_fields(self, tmp_path):
         """Finding should have rule, severity, line, message."""
         # Use content that only triggers syntax.filter_known
         content = """<!-- provenance: tool=test model=test -->
@@ -1172,7 +1447,12 @@ class TestRuleEngineAPI:
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         # Find the syntax.filter_known finding
         findings = [f for f in result.findings if f.rule == "syntax.filter_known"]
@@ -1187,22 +1467,25 @@ class TestRuleEngineAPI:
         assert finding.line is not None
         assert isinstance(finding.message, str)
 
-    def test_engine_with_none_system_rules(self, base_rules_path, house_rules_path, tmp_path):
-        """Engine should work with None system_rules_path."""
-        engine = RuleEngine(base_rules_path, house_rules_path, None)
+    def test_validates_with_no_system_rules(self, tmp_path):
+        """An empty systems directory validates against the base rules alone."""
         content_file = tmp_path / "content.txt"
         content_file.write_text(VALID_CONTENT, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(_payload(content_file), SYSTEM, systems_dir=tmp_path)
         assert isinstance(result, ValidationResult)
 
-    def test_engine_with_none_house_rules(self, base_rules_path, system_rules_path, tmp_path):
-        """Engine should work with None house_rules_path."""
-        engine = RuleEngine(base_rules_path, None, system_rules_path)
+    def test_validates_without_house_rules(self, tmp_path):
+        """A systems directory with no all.rules.toml supplies no house rules."""
+        (tmp_path / "test.rules.toml").write_text(
+            '[system]\nnames = ["Test System"]\ndossier = "test.md"\n',
+            encoding="utf-8",
+        )
+        (tmp_path / "test.md").write_text("", encoding="utf-8")
         content_file = tmp_path / "content.txt"
         content_file.write_text(VALID_CONTENT, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(_payload(content_file), SYSTEM, systems_dir=tmp_path)
         assert isinstance(result, ValidationResult)
 
 
@@ -1224,10 +1507,8 @@ Line 2.
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        from edcg.rules.validation import load_base_config
         base = load_base_config(RULE_DATA_DIR)
         kinds = load_kinds(base)
-        from edcg.rules.validation import PROVENANCE_RE
         content_obj = parse_content(content_file, PROVENANCE_RE, kinds)
         
         assert len(content_obj.tags) == 1
@@ -1246,7 +1527,6 @@ Authored line.
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        from edcg.rules.validation import load_base_config, PROVENANCE_RE
         base = load_base_config(RULE_DATA_DIR)
         kinds = load_kinds(base)
         content_obj = parse_content(content_file, PROVENANCE_RE, kinds)
@@ -1262,27 +1542,37 @@ Authored line.
 class TestEdgeCases:
     """Tests for edge cases and boundary conditions."""
 
-    def test_empty_content_file(self, engine, tmp_path):
+    def test_empty_content_file(self, tmp_path):
         """Empty content file should be handled."""
         content_file = tmp_path / "content.txt"
         content_file.write_text("", encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         # Should not crash, may have encoding findings
         assert isinstance(result, ValidationResult)
 
-    def test_content_with_only_provenance(self, engine, tmp_path):
+    def test_content_with_only_provenance(self, tmp_path):
         """Content with only provenance line should be handled."""
         content = "<!-- provenance: tool=test model=test -->"
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         assert isinstance(result, ValidationResult)
 
-    def test_comment_lines_ignored(self, engine, tmp_path):
+    def test_comment_lines_ignored(self, tmp_path):
         """Comment lines should be ignored."""
         content = """<!-- provenance: tool=test model=test -->
 @SystemGreeting<~>Test System
@@ -1292,12 +1582,17 @@ Welcome.
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         # Comment should not cause issues
         assert isinstance(result, ValidationResult)
 
-    def test_img_url_not_counted_as_phrase(self, engine, tmp_path):
+    def test_img_url_not_counted_as_phrase(self, tmp_path):
         """img_url= lines should not be treated as phrases."""
         content = """<!-- provenance: tool=test model=test -->
 @StationFact<~>Test System<~>Test Station
@@ -1308,13 +1603,18 @@ This is the first phrase.
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         # img_url should not trigger content.no_links
         link_findings = [f for f in result.findings if f.rule == "content.no_links"]
         assert len(link_findings) == 0
 
-    def test_updates_marker_not_phrase(self, engine, tmp_path):
+    def test_updates_marker_not_phrase(self, tmp_path):
         """UPDATEDB marker should not be treated as phrase."""
         content = """<!-- provenance: tool=test model=test -->
 @SystemGreeting<~>Test System
@@ -1324,7 +1624,12 @@ Welcome.
         content_file = tmp_path / "content.txt"
         content_file.write_text(content, encoding="utf-8", newline="\r\n")
         
-        result = engine.validate(content_file, None)
+        result = validate_content(
+            _payload(content_file),
+            SYSTEM,
+            house_rules_path=HOUSE_RULES,
+            systems_dir=SYSTEMS_DIR,
+        )
         
         # UPDATEDB should not trigger any content rules
         assert isinstance(result, ValidationResult)

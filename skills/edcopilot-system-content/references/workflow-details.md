@@ -34,8 +34,9 @@ that is unset or empty falls back to the default in the table.
 | `EDCG_INARA_API_KEY` | Inara API key. When unset, Inara checks are skipped and `audit` reports "Inara API key is not configured." — the answer to "why is Inara unavailable". |
 | `EDCG_SPANSH_ENABLED` | Whether Spansh is queried. Defaults to true. |
 | `EDCG_RAVEN_API_URL` | Raven Colonial base URL. Defaults to the hosted Raven Colonial service. |
-| `EDCG_LOG_LEVEL` | Accepted but currently unused (reserved). |
-| `EDCG_DEEPL_API_KEY` | Reserved; accepted and ignored. Nothing uses it yet. |
+
+`EDCG_LOG_LEVEL` and `EDCG_DEEPL_API_KEY` are ignored by this version: nothing
+reads them, so setting either changes nothing.
 
 ## The marker cycle
 
@@ -160,8 +161,9 @@ edcg.py branch abort            # --confirm to actually discard
 ```
 
 `edcg.py branch start` creates and checks out a matching branch in both
-repositories and records the systems it affects. When the runtime root is not a
-git repository, it makes a timestamped **backup** of the custom file instead.
+repositories; it keeps no system list — read `systems/` and the branch diff for
+that. When the runtime root is not a git repository, it makes a timestamped
+**backup** of the custom file instead.
 `edcg.py branch status` reports the active branch, each repository's current
 branch and its uncommitted changes. `edcg.py branch review` prints the diff.
 `edcg.py branch finalize` merges into the default branch and reports the merge

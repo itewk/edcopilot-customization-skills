@@ -48,20 +48,19 @@ class InaraClient(ApiClient):
     Provides methods to fetch station and system data with configurable
     retry, timeout, and rate limiting.
 
-    Redirects are deliberately not followed. The old package followed them,
-    but this client POSTs a JSON body carrying the Inara API key: replaying
-    that body cross-origin on a 307/308 is an unnecessary exposure, and a
-    redirect from the API endpoint signals a configuration problem rather
-    than a legitimate move. A redirect therefore reaches the caller
-    unfollowed: the 3xx body is usually HTML, so parsing it fails and the
-    request surfaces as ``InaraAPIError("Invalid JSON response")`` rather
-    than a successful response.
+    Redirects are deliberately not followed: this client POSTs a JSON body
+    carrying the Inara API key, so replaying that body cross-origin on a
+    307/308 would expose the key, and a redirect from the API endpoint signals
+    a configuration problem rather than a legitimate move. A redirect
+    therefore reaches the caller unfollowed: the 3xx body is usually HTML, so
+    parsing it fails and the request surfaces as
+    ``InaraAPIError("Invalid JSON response")`` rather than a successful
+    response.
     """
 
     error_type = InaraAPIError
     follow_redirects = False
     retry_statuses = frozenset({429})
-    request_verb = "post"
 
     def __init__(
         self,
@@ -101,6 +100,10 @@ class InaraClient(ApiClient):
                 }
             ],
         }
+
+    async def _post_json(self, payload: dict[str, Any]) -> httpx.Response:
+        """POST one JSON payload to the Inara endpoint."""
+        return await self._request_with_retry("POST", self.base_url, json=payload)
 
     def _parse_response(self, response: httpx.Response, event_name: str) -> Optional[dict[str, Any]]:
         """Parse Inara API response and extract event data."""
@@ -166,7 +169,7 @@ class InaraClient(ApiClient):
             }
         )
 
-        response = await self._request_with_retry("POST", self.base_url, json=payload)
+        response = await self._post_json(payload)
         event_data = self._parse_response(response, "getStation")
 
         if event_data is None:
@@ -210,7 +213,7 @@ class InaraClient(ApiClient):
             }
         )
 
-        response = await self._request_with_retry("POST", self.base_url, json=payload)
+        response = await self._post_json(payload)
         event_data = self._parse_response(response, "getStarSystem")
 
         if event_data is None:

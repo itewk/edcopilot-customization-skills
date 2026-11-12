@@ -149,15 +149,16 @@ def extract_voices(lines: list[str], known_tokens: set[str]) -> set[str]:
     """Extract voice names from dossier section 8 (Writing rules).
 
     Only extracts from the "Voices used" subsection. ``known_tokens`` is the
-    lower-cased set of EDCoPilot vocabulary tokens, which are substitutions
-    rather than voices; the caller supplies it from the rule data so this list
-    has one owner.
+    set of EDCoPilot vocabulary tokens, in the data's own spelling; they are
+    substitutions rather than voices, so the match is case-insensitive and the
+    caller supplies the set from the rule data.
 
     Args:
         lines: The section's lines.
-        known_tokens: Lower-cased tokens to exclude from the voice set.
+        known_tokens: Vocabulary tokens to exclude from the voice set.
     """
     voices = set()
+    tokens = {token.lower() for token in known_tokens}
     in_voices_used = False
 
     for line in lines:
@@ -176,7 +177,7 @@ def extract_voices(lines: list[str], known_tokens: set[str]) -> set[str]:
             for match in VOICE_TAG_RE.finditer(line):
                 voice = match.group(1)
                 # Exclude known tokens (case-insensitive)
-                if voice.lower() not in known_tokens:
+                if voice.lower() not in tokens:
                     voices.add(voice)
 
     return voices

@@ -133,8 +133,8 @@ def get_system_content(
     try:
         custom_file, config = resolve_custom_file()
     except FileNotFoundError:
-        # No EDCoPilot root is the old empty answer, not an error for this
-        # read-only command; the policy stays here, resolution stays single.
+        # No EDCoPilot root means no content: this read-only command returns an
+        # empty tag list rather than an error, and resolution stays in one place.
         return {"system_name": system_name, "tags": []}
 
     base = load_base_config(RULE_DATA_DIR)

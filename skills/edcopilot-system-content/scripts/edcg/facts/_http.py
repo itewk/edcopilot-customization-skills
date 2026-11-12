@@ -7,9 +7,8 @@ the few settings that genuinely differ:
 - ``follow_redirects``: Spansh and Raven follow them; Inara does not, because
   its API key travels in the POST body.
 - ``retry_statuses``: Inara retries 429; the other two do not.
-- ``default_headers``: only Spansh sends a User-Agent.
-- ``request_verb``: Raven and Spansh call ``client.request(method, url)``;
-  Inara always POSTs JSON to one endpoint, so it names the verb instead.
+- ``default_headers``: only Spansh sends a User-Agent. It is read-only, so a
+  client cannot mutate another client's headers through the shared base.
 
 Each client keeps its own exception class (callers and tests import them by
 name); they share ``ApiError`` so the transport can raise ``self.error_type``.
@@ -19,7 +18,8 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Optional
+from types import MappingProxyType
+from typing import Any, Mapping, Optional
 
 import httpx
 
@@ -34,8 +34,7 @@ class ApiClient:
     error_type: type[ApiError] = ApiError
     follow_redirects: bool = True
     retry_statuses: frozenset[int] = frozenset()
-    default_headers: dict[str, str] = {}
-    request_verb: Optional[str] = None
+    default_headers: Mapping[str, str] = MappingProxyType({})
 
     def __init__(
         self,
@@ -113,10 +112,7 @@ class ApiClient:
         last_exception: Optional[BaseException] = None
         for attempt in range(self.max_retries + 1):
             try:
-                if self.request_verb is not None:
-                    response = await getattr(client, self.request_verb)(url, **kwargs)
-                else:
-                    response = await client.request(method, url, **kwargs)
+                response = await client.request(method, url, **kwargs)
                 response.raise_for_status()
                 return response
             except (httpx.RequestError, httpx.TimeoutException) as e:

@@ -2,6 +2,8 @@
 
 import inspect
 
+import pytest
+
 from edcg.facts._http import ApiClient
 from edcg.facts.inara import InaraClient
 from edcg.facts.raven import RavenClient
@@ -24,3 +26,9 @@ def test_retry_lives_only_on_the_shared_base():
     source = inspect.getsourcefile(ApiClient._request_with_retry)
     assert source is not None
     assert source.replace("\\", "/").endswith("facts/_http.py"), source
+
+
+def test_default_headers_are_read_only():
+    """The shared base's header mapping is frozen, not mutable module state."""
+    with pytest.raises(TypeError):
+        ApiClient.default_headers["X-Probe"] = "written"  # type: ignore[index]
