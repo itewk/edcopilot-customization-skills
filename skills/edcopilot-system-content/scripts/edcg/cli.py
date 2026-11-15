@@ -120,6 +120,101 @@ def _require_fields(data: dict, spec: dict[str, type | tuple[type, bool]]) -> No
         raise UsageError("\n".join(errors))
 
 
+# The payload each stdin command documents in its epilog and accepts at runtime.
+# One table so the reader, the help example and the doc test cannot drift apart.
+PAYLOAD_SPECS: dict[str, dict[str, type | tuple[type, bool]]] = {
+    "validate-definition": {
+        "dossier": str,
+        "rules": str,
+        "system_name": str,
+        "all_rules": (str, False),
+    },
+    "save-definition": {
+        "system_name": str,
+        "dossier_md": str,
+        "rules_toml": str,
+        "commit_co_author": (str, False),
+    },
+    "validate-content": {"content": str, "system_name": str},
+    "write-content": {
+        "system_name": str,
+        "content_block": (str, False),
+        "model": (str, False),
+        "commit_co_author": (str, False),
+    },
+    "rewrite-tag": {
+        "system_name": str,
+        "tag": str,
+        "remove": (list, False),
+        "replace": (dict, False),
+        "add": (list, False),
+    },
+}
+
+
+def _resolve_input_path(raw: str) -> Path:
+    """Resolve a ``--*-file`` value: absolute as given, else from the content root."""
+    path = Path(raw)
+    if path.is_absolute():
+        return path
+    return get_config().content_definitions_root / path
+
+
+def _read_utf8(path: Path, field_name: str) -> str:
+    """Read UTF-8 text for ``field_name``, or raise ``UsageError``.
+
+    A missing, unreadable or non-UTF-8 file is a usage fault: the caller meant
+    to hand over text and did not, so the hint names the field, the path and
+    the encoding that was expected.
+    """
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        raise UsageError(
+            f"error: could not read {field_name!r} from {path}: {exc.strerror or exc}\n"
+            "fix: check that the file exists at that path and is readable"
+        ) from exc
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise UsageError(
+            f"error: {field_name!r} file is not valid UTF-8: {path} (byte {exc.start})\n"
+            f"fix: re-save the file as UTF-8, or pass {field_name!r} as a JSON "
+            "string on stdin"
+        ) from exc
+
+
+def _load_payload_files(
+    data: dict, args: argparse.Namespace, flags: list[tuple[str, str]]
+) -> None:
+    """Fill payload fields from ``--<field>-file`` flags before validation.
+
+    A field may arrive from stdin or from its file flag, never from both: no
+    rule picks a winner, so the pair is a usage error. Faults are collected so
+    one call reports every bad file instead of only the first.
+    """
+    errors: list[str] = []
+    for flag_attr, json_key in flags:
+        raw = getattr(args, flag_attr)
+        if raw is None:
+            continue
+        option = "--" + flag_attr.replace("_", "-")
+        if json_key in data:
+            errors.append(
+                f"error: payload field {json_key!r} was given twice: in the JSON "
+                f"payload and via {option}\n"
+                f"fix: supply {json_key!r} either in the payload or as a file, "
+                "not both"
+            )
+            continue
+        try:
+            data[json_key] = _read_utf8(_resolve_input_path(raw), json_key)
+        except UsageError as exc:
+            errors.append(str(exc))
+    if errors:
+        raise UsageError("\n".join(errors))
+
+
 def _required(data: dict, key: str) -> Any:
     if key not in data or data[key] is None:
         raise UsageError(f"payload is missing required field {key!r}")
@@ -498,20 +593,18 @@ def command_audit(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 
-
-
-
 def command_validate_definition(args: argparse.Namespace) -> int:
     data = _payload()
-    _require_fields(
+    _load_payload_files(
         data,
-        {
-            "dossier": str,
-            "rules": str,
-            "system_name": str,
-            "all_rules": (str, False),
-        },
+        args,
+        [
+            ("dossier_file", "dossier"),
+            ("rules_file", "rules"),
+            ("all_rules_file", "all_rules"),
+        ],
     )
+    _require_fields(data, PAYLOAD_SPECS["validate-definition"])
     result = validate_definition(
         dossier=data["dossier"],
         rules=data["rules"],
@@ -524,7 +617,12 @@ def command_validate_definition(args: argparse.Namespace) -> int:
 
 def command_save_definition(args: argparse.Namespace) -> int:
     data = _payload()
-    _require_fields(data, {"system_name": str, "dossier_md": str, "rules_toml": str})
+    _load_payload_files(
+        data,
+        args,
+        [("dossier_file", "dossier_md"), ("rules_file", "rules_toml")],
+    )
+    _require_fields(data, PAYLOAD_SPECS["save-definition"])
     result = save_definition(
         system_name=data["system_name"],
         dossier_md=data["dossier_md"],
@@ -542,7 +640,7 @@ def command_save_definition(args: argparse.Namespace) -> int:
 
 def command_validate_content(args: argparse.Namespace) -> int:
     data = _payload()
-    _require_fields(data, {"content": str, "system_name": str})
+    _require_fields(data, PAYLOAD_SPECS["validate-content"])
     result = validate_content(
         content=data["content"],
         system_name=data["system_name"],
@@ -553,18 +651,10 @@ def command_validate_content(args: argparse.Namespace) -> int:
 
 def command_write_content(args: argparse.Namespace) -> int:
     data = _payload()
-    _require_fields(
-        data,
-        {
-            "system_name": str,
-            "content_block": str,
-            "model": (str, False),
-            "commit_co_author": (str, False),
-        },
-    )
+    _require_fields(data, PAYLOAD_SPECS["write-content"])
     result = write_content(
         system_name=data["system_name"],
-        content_block=data["content_block"],
+        content_block=data.get("content_block", ""),
         model=data.get("model"),
         commit_co_author=data.get("commit_co_author"),
     )
@@ -579,16 +669,7 @@ def command_get_content(args: argparse.Namespace) -> int:
 
 def command_rewrite_tag(args: argparse.Namespace) -> int:
     data = _payload()
-    _require_fields(
-        data,
-        {
-            "system_name": str,
-            "tag": str,
-            "remove": (list, False),
-            "replace": (dict, False),
-            "add": (list, False),
-        },
-    )
+    _require_fields(data, PAYLOAD_SPECS["rewrite-tag"])
     result = rewrite_tag(
         system_name=data["system_name"],
         tag=data["tag"],
@@ -842,10 +923,11 @@ review: audit/branch
     gather_parser.add_argument("--system", required=True, help="System name")
     gather_parser.set_defaults(func=command_gather_facts)
 
-    definition_parser = subparsers.add_parser("validate-definition",
+    definition_parser = subparsers.add_parser(
+        "validate-definition",
         help="Validate a dossier and rules pair (JSON on stdin)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""Example:
+        epilog="""Example, every field as JSON on stdin:
   python edcg.py validate-definition < definition.json
 
 Where definition.json is:
@@ -854,14 +936,36 @@ Where definition.json is:
   "dossier": "# Test System - system dossier\\n...",
   "rules": "[system]\\nnames = [\\"Test System\\"]\\n",
   "all_rules": "[rules.content.station_landable]\\nseverity = \\"error\\"\\n"
-}""",
+}
+
+Or keep the three large fields in files and pass only the rest on stdin:
+  python edcg.py validate-definition --dossier-file dossier.md --rules-file rules.toml --all-rules-file all_rules.toml < system_name.json
+
+system_name.json is {"system_name": "Test System"}. Relative paths resolve
+from the content root; absolute paths are accepted as given. A field must come
+from the payload or from its file flag, never both.""",
+    )
+    definition_parser.add_argument(
+        "--dossier-file",
+        metavar="PATH",
+        help="Read the dossier text from PATH instead of the 'dossier' field",
+    )
+    definition_parser.add_argument(
+        "--rules-file",
+        metavar="PATH",
+        help="Read the rules TOML from PATH instead of the 'rules' field",
+    )
+    definition_parser.add_argument(
+        "--all-rules-file",
+        metavar="PATH",
+        help="Read the all-rules TOML from PATH instead of the 'all_rules' field",
     )
     definition_parser.set_defaults(func=command_validate_definition)
     save_parser = subparsers.add_parser(
         "save-definition",
         help="Save a dossier and rules pair (JSON on stdin)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""Example:
+        epilog="""Example, every field as JSON on stdin:
   python edcg.py save-definition < definition.json
 
 Where definition.json is:
@@ -870,7 +974,24 @@ Where definition.json is:
   "dossier_md": "# Test System - system dossier\\n...",
   "rules_toml": "[system]\\nnames = [\\"Test System\\"]\\n",
   "commit_co_author": "<harness> (<models>) <email>"
-}""",
+}
+
+Or keep the two large fields in files and pass only the rest on stdin:
+  python edcg.py save-definition --dossier-file dossier.md --rules-file rules.toml < system_name.json
+
+system_name.json is {"system_name": "Test System"}. Relative paths resolve
+from the content root; absolute paths are accepted as given. A field must come
+from the payload or from its file flag, never both.""",
+    )
+    save_parser.add_argument(
+        "--dossier-file",
+        metavar="PATH",
+        help="Read the dossier markdown from PATH instead of the 'dossier_md' field",
+    )
+    save_parser.add_argument(
+        "--rules-file",
+        metavar="PATH",
+        help="Read the rules TOML from PATH instead of the 'rules_toml' field",
     )
     save_parser.set_defaults(func=command_save_definition)
 

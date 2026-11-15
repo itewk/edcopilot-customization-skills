@@ -103,6 +103,46 @@ def test_write_content_optional_model_must_be_a_string(capsys):
     assert captured.out == ""
 
 
+def test_write_content_content_block_may_be_absent(
+    monkeypatch, tmp_path, capsys
+):
+    # Omitting content_block is the documented flow for committing edits that
+    # are already staged in the runtime repo; only a wrong type is a fault
+    # (see test_write_content_wrong_type above).
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(tmp_path))
+    monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(runtime))
+    monkeypatch.setenv("EDCG_AUTO_COMMIT", "false")
+    payload = {"system_name": "S"}
+    with patch("sys.stdin", io.StringIO(json.dumps(payload))):
+        code = cli.main(["write-content"])
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "required field" not in captured.err
+    assert "Traceback" not in captured.err
+    assert json.loads(captured.out)["commit_hash"] is None
+
+
+def test_save_definition_optional_commit_co_author_must_be_a_string(capsys):
+    # commit_co_author is optional, but a non-string would reach git as a
+    # trailer value, so its type is checked when present.
+    payload = {
+        "system_name": "X",
+        "dossier_md": "# X\n",
+        "rules_toml": "[system]\n",
+        "commit_co_author": ["harness", "model"],
+    }
+    with patch("sys.stdin", io.StringIO(json.dumps(payload))):
+        code = cli.main(["save-definition"])
+    assert code == 2
+    captured = capsys.readouterr()
+    assert "commit_co_author" in captured.err
+    assert "must be a str" in captured.err
+    assert "Traceback" not in captured.err
+    assert captured.out == ""
+
+
 def test_rewrite_tag_wrong_type(capsys):
     payload = {"system_name": "X", "tag": ["a"]}
     with patch("sys.stdin", io.StringIO(json.dumps(payload))):
@@ -127,7 +167,7 @@ def test_rewrite_tag_optional_remove_must_be_a_list(capsys):
     assert captured.out == ""
 
 
-def test_rewrite_tag_optional_fields_may_be_absent(capsys):
+def test_rewrite_tag_optional_fields_may_be_absent(capsys, clean_env):
     # Absence of remove/replace/add is not a usage fault: the call gets past
     # the payload reader to repository resolution.
     payload = {"system_name": "X", "tag": "@SystemGreeting<~>X"}

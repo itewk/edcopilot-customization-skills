@@ -3,21 +3,25 @@
 SKILL.md no longer carries a command table, so argparse is the only place an
 agent learns a command's flags and payload shape. These tests keep that surface
 honest: every argument has help text, the exit-code contract is printed, the
-worked examples in the epilogs are real invocations the parser accepts, and the
-JSON blocks in them are not reflowed into one paragraph.
+worked examples in the epilogs are real invocations the parser accepts, the
+JSON blocks in them are not reflowed into one paragraph, and every documented
+payload is type-valid against the command that reads it.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import shlex
 
 import pytest
+from edcg import cli
 from edcg.cli import build_parser
 
 # Commands whose payload cannot be guessed from the flag names alone.
 EXAMPLED_COMMANDS = [
+    ["validate-definition"],
     ["save-definition"],
     ["write-content"],
     ["rewrite-tag"],
@@ -62,6 +66,24 @@ def _example_argvs() -> list[list[str]]:
     return found
 
 
+def _json_example(parser: argparse.ArgumentParser) -> dict | None:
+    """The first ``{ ... }`` block in *parser*'s epilog, parsed."""
+    lines = parser.epilog.splitlines()
+    for start, line in enumerate(lines):
+        if line.strip() != "{":
+            continue
+        for end in range(start + 1, len(lines)):
+            if lines[end].rstrip() == "}":
+                block = "\n".join(lines[start : end + 1])
+                return json.loads(block)
+    return None
+
+
+def _command_of(parser: argparse.ArgumentParser) -> str:
+    """``edcg markdb add`` -> ``markdb add``."""
+    return " ".join(parser.prog.split()[1:])
+
+
 def test_every_argument_and_subcommand_has_help_text():
     for parser in _all_parsers():
         for action in parser._actions:
@@ -90,6 +112,34 @@ def test_the_stateful_commands_document_a_worked_example():
         assert any(argv[: len(head)] == head for argv in argvs), (
             f"no worked example for {' '.join(head)}"
         )
+
+
+def test_the_definition_commands_document_the_file_flags():
+    for parser in _parsers_with_epilog():
+        command = _command_of(parser)
+        if command not in {"validate-definition", "save-definition"}:
+            continue
+        help_text = parser.format_help()
+        assert "--dossier-file" in help_text, f"{command} hides --dossier-file"
+        assert "--rules-file" in help_text, f"{command} hides --rules-file"
+        # Both invocation forms are shown: stdin-only and file flags.
+        assert "< definition.json" in parser.epilog
+        assert "< system_name.json" in parser.epilog
+
+
+def test_every_documented_payload_is_type_valid_for_its_command():
+    """A drifted epilog example is a documented contract the CLI rejects."""
+    checked = 0
+    for parser in _parsers_with_epilog():
+        payload = _json_example(parser)
+        if payload is None:
+            continue
+        spec = cli.PAYLOAD_SPECS.get(_command_of(parser))
+        if spec is None:
+            continue
+        cli._require_fields(payload, spec)
+        checked += 1
+    assert checked >= len(cli.PAYLOAD_SPECS)
 
 
 def test_json_epilog_blocks_are_not_reflowed():
