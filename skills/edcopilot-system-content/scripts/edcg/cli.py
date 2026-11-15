@@ -102,14 +102,20 @@ def _payload() -> dict:
     return data
 
 
-def _require_fields(data: dict, spec: dict[str, type]) -> None:
-    errors = []
-    for key, expected_type in spec.items():
+def _require_fields(data: dict, spec: dict[str, type | tuple[type, bool]]) -> None:
+    errors: list[str] = []
+    for key, requirement in spec.items():
+        if isinstance(requirement, tuple):
+            expected_type, required = requirement
+        else:
+            expected_type, required = requirement, True
+
         if key not in data or data[key] is None:
-            errors.append(f"error: payload is missing required field {key!r}\nfix: include {key!r} — see this command's --help example")
+            if required:
+                errors.append(f"error: payload is missing required field {key!r}\nfix: include {key!r} — see this command's --help example")
         elif not isinstance(data[key], expected_type):
             actual_type = type(data[key]).__name__
-            errors.append(f"error: payload field {key!r} must be a {expected_type.__name__}, got {actual_type}\nfix: pass {key!r} as a string")
+            errors.append(f"error: payload field {key!r} must be a {expected_type.__name__}, got {actual_type}\nfix: pass {key!r} as a {expected_type.__name__}")
     if errors:
         raise UsageError("\n".join(errors))
 
@@ -813,6 +819,17 @@ review: audit/branch
 
     definition_parser = subparsers.add_parser("validate-definition",
         help="Validate a dossier and rules pair (JSON on stdin)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Example:
+  python edcg.py validate-definition < definition.json
+
+Where definition.json is:
+{
+  "system_name": "Test System",
+  "dossier": "# Test System - system dossier\\n...",
+  "rules": "[system]\\nnames = [\\"Test System\\"]\\n",
+  "all_rules": ["rule1", "rule2"]
+}""",
     )
     definition_parser.set_defaults(func=command_validate_definition)
     save_parser = subparsers.add_parser(
@@ -839,7 +856,16 @@ Where definition.json is:
     brief_parser.set_defaults(func=command_writing_brief_data)
 
     content_validate_parser = subparsers.add_parser(
-        "validate-content", help="Validate a content block (JSON on stdin)"
+        "validate-content", help="Validate a content block (JSON on stdin)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Example:
+  python edcg.py validate-content < content.json
+
+Where content.json is:
+{
+  "system_name": "Test System",
+  "content": "Hello world."
+}""",
     )
     content_validate_parser.set_defaults(func=command_validate_content)
     write_parser = subparsers.add_parser(
