@@ -64,6 +64,39 @@ a rule without one.
 - `db.placement` — `UPDATEDB` sits on the line after its tag.
 - `dossier.spine` — every dossier has the nine sections, in order.
 
+## Authoring a system rules file
+
+A system's rules file is small: at `systems/<slug>.rules.toml`, it names the
+system, points at its dossier, lists the voices and, when a section needs a
+different size, overrides that bound. Everything else is inherited.
+
+```toml
+[system]
+names = ["Example System", "Example System Alt"]
+dossier = "systems/example-system.md"
+voices = ["Foreman", "Quartermaster"]
+
+[content.bounds.stations."Primary Station (AB-1)"]
+StationChatter = [12, 24]
+```
+
+`names` must include the exact in-game system name, and further spellings the
+writer may use. `dossier` is the dossier's path relative to the content root.
+`voices` must match the dossier's section 8 (`Writing rules`) exactly — here
+`Foreman` and `Quartermaster`, one token each, no spaces. The station table is
+the per-station bound override described under Bounds below; it wins over the
+system's kind bound, which wins over the base default.
+
+Do not declare rules here. A rule that applies to every system belongs in
+`systems/all.rules.toml`; a system file that declares one is refused, because
+the declaration has no layer to belong to.
+
+`edcg.py validate-definition` is the checker for the pair. Its findings name
+the rule and what to change — a voice used in section 8 but missing from
+`voices`, a missing `dossier` or `names` key, a system name that is not in
+`names` — so fix the artifacts it points at rather than adding keys until it
+stops complaining.
+
 ## Bounds
 
 Bounds live beside the rules, under `[content.bounds]`, because a rule table

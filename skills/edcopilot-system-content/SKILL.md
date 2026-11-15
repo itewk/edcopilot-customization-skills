@@ -34,7 +34,7 @@ subject.
 | [`references/new-system-interview.md`](references/new-system-interview.md) | A system with no definition yet: the six-phase interview |
 | [`references/update-interview.md`](references/update-interview.md) | A system that already has a definition: the seven-phase update |
 | [`references/writing-brief.md`](references/writing-brief.md) | Before writing content: exact tag lines, section sizes, voices, tokens and filters |
-| [`references/rules.md`](references/rules.md) | Rule layers, precedence and bound semantics — before changing a rule |
+| [`references/rules.md`](references/rules.md) | Rule layers, precedence and bound semantics — before changing a rule, and when authoring a system's rules file |
 
 1. **Check the environment.** Run `python <skill-dir>/scripts/edcg.py doctor`.
    It prints one `OK` or `FAIL` line per check (Python version, `httpx`,
