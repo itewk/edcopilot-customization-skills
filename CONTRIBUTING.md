@@ -67,15 +67,22 @@ To add a new skill to this repository:
 ## Commit Conventions
 
 - Use conventional commit subjects (e.g., `feat: add new rule`, `docs: update README`)
-- Include a `Models:` trailer with the model and role used for implementation:
+- End the commit message with exactly one attribution trailer, in the final
+  paragraph separated from the body by one blank line:
+
   ```
-  Models: lmstudio/qwen/qwen3-coder-30b (implementation)
-  ```
-- Include a `Co-authored-by:` trailer with the tool and model that produced the commit:
-  ```
-  Co-authored-by: 🤖 OpenCode (Qwen3 Coder 30B) <noreply@opencode.ai>
+  Co-authored-by: 🤖 OpenCode (<model(s)>) <noreply@opencode.ai>
   ```
 
-The trailers must be adjacent in the commit message.
+  The parenthesised value names the tool's contributing model(s), using the
+  provider/model id actually in use for the session, for example:
+
+  ```
+  Co-authored-by: 🤖 OpenCode (opencode-go/deepseek-v4.1-flash) <noreply@opencode.ai>
+  ```
+
+  There is no separate `Models:` trailer — model and role attribution live
+  inside that value. Never add the trailer twice if the message already
+  carries one.
 - Live fixtures require `EDCP_TEST_LIVE_ROOT` (live content repo, read-only),
   `EDCP_TEST_EDCOPILOT_ROOT` (runtime custom file), and companion template sibling path.

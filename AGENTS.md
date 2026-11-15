@@ -14,9 +14,19 @@ The hermetic test suite runs without network access or real EDCoPilot folders, u
 ## Commit conventions
 
 - Use conventional commit subjects
-- Include a `Models:` trailer with the model and role used for implementation
-- Include a `Co-authored-by:` trailer with the tool and model that produced the commit
-- The trailers must be adjacent in the commit message
+- End the commit message with exactly one attribution trailer, in the final
+  paragraph separated by one blank line:
+
+  ```
+  Co-authored-by: 🤖 OpenCode (<model(s)>) <noreply@opencode.ai>
+  ```
+
+  The parenthesised value names the tool's contributing model(s), using the
+  provider/model id actually in use for the session (e.g.
+  `Co-authored-by: 🤖 OpenCode (opencode-go/deepseek-v4.1-flash) <noreply@opencode.ai>`).
+  There is no separate `Models:` trailer — model and role attribution live
+  inside that value. Never add the trailer twice if the message already
+  carries one.
 
 ## References
 
