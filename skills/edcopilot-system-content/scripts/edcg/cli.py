@@ -92,14 +92,26 @@ def _payload() -> dict:
     """Read one JSON object from stdin."""
     text = sys.stdin.read()
     if not text.strip():
-        raise UsageError("expected a JSON payload on stdin")
+        raise UsageError("expected a JSON payload on stdin\nfix: pipe a JSON object via stdin (e.g., cat payload.json | edcg ...)")
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise UsageError(f"invalid JSON payload: {exc}") from exc
+        raise UsageError(f"invalid JSON payload: {exc}\nfix: ensure your JSON is valid and well-formed") from exc
     if not isinstance(data, dict):
-        raise UsageError("JSON payload must be an object")
+        raise UsageError("JSON payload must be an object\nfix: the payload should be a JSON dictionary (object)")
     return data
+
+
+def _require_fields(data: dict, spec: dict[str, type]) -> None:
+    errors = []
+    for key, expected_type in spec.items():
+        if key not in data or data[key] is None:
+            errors.append(f"error: payload is missing required field {key!r}\nfix: include {key!r} — see this command's --help example")
+        elif not isinstance(data[key], expected_type):
+            actual_type = type(data[key]).__name__
+            errors.append(f"error: payload field {key!r} must be a {expected_type.__name__}, got {actual_type}\nfix: pass {key!r} as a string")
+    if errors:
+        raise UsageError("\n".join(errors))
 
 
 def _required(data: dict, key: str) -> Any:
@@ -485,10 +497,11 @@ def command_audit(args: argparse.Namespace) -> int:
 
 def command_validate_definition(args: argparse.Namespace) -> int:
     data = _payload()
+    _require_fields(data, {"dossier": str, "rules": str, "system_name": str})
     result = validate_definition(
-        dossier=_required(data, "dossier"),
-        rules=_required(data, "rules"),
-        system_name=_required(data, "system_name"),
+        dossier=data["dossier"],
+        rules=data["rules"],
+        system_name=data["system_name"],
         all_rules=data.get("all_rules"),
     )
     _emit(_validation_payload(result))
@@ -497,10 +510,11 @@ def command_validate_definition(args: argparse.Namespace) -> int:
 
 def command_save_definition(args: argparse.Namespace) -> int:
     data = _payload()
+    _require_fields(data, {"system_name": str, "dossier_md": str, "rules_toml": str})
     result = save_definition(
-        system_name=_required(data, "system_name"),
-        dossier_md=_required(data, "dossier_md"),
-        rules_toml=_required(data, "rules_toml"),
+        system_name=data["system_name"],
+        dossier_md=data["dossier_md"],
+        rules_toml=data["rules_toml"],
         commit_co_author=data.get("commit_co_author"),
     )
     _emit(
@@ -514,9 +528,10 @@ def command_save_definition(args: argparse.Namespace) -> int:
 
 def command_validate_content(args: argparse.Namespace) -> int:
     data = _payload()
+    _require_fields(data, {"content": str, "system_name": str})
     result = validate_content(
-        content=_required(data, "content"),
-        system_name=_required(data, "system_name"),
+        content=data["content"],
+        system_name=data["system_name"],
     )
     _emit(_validation_payload(result))
     return 0 if result.passed else 1
@@ -524,8 +539,9 @@ def command_validate_content(args: argparse.Namespace) -> int:
 
 def command_write_content(args: argparse.Namespace) -> int:
     data = _payload()
+    _require_fields(data, {"system_name": str})
     result = write_content(
-        system_name=_required(data, "system_name"),
+        system_name=data["system_name"],
         content_block=data.get("content_block", ""),
         model=data.get("model"),
         commit_co_author=data.get("commit_co_author"),
@@ -541,9 +557,10 @@ def command_get_content(args: argparse.Namespace) -> int:
 
 def command_rewrite_tag(args: argparse.Namespace) -> int:
     data = _payload()
+    _require_fields(data, {"system_name": str, "tag": str})
     result = rewrite_tag(
-        system_name=_required(data, "system_name"),
-        tag=_required(data, "tag"),
+        system_name=data["system_name"],
+        tag=data["tag"],
         remove=data.get("remove"),
         replace=data.get("replace"),
         add=data.get("add"),
