@@ -2,7 +2,7 @@
 name: edcopilot-system-content
 description: Author and update EDCoPilot speech extensions for colonisation systems in Elite Dangerous. Use this for a new system or station, and for refreshing existing greeting, chatter, broadcast and StationFact content - interview the user, write the dossier and rules, author the speech content, validate it, and stage it for EDCoPilot's database update.
 license: GPL-3.0
-compatibility: Requires Windows (EDCoPilot), Python 3.12+, the httpx and GitPython packages, and git
+compatibility: Requires Windows (EDCoPilot), Python 3.14+, the httpx and GitPython packages, and git
 metadata:
   version: "1.0.0"
 ---

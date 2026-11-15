@@ -22,7 +22,7 @@ class TestGitRepoInit:
             repo = GitRepo.init(repo_path)
             assert repo_path.exists()
             assert (repo_path / ".git").exists()
-            assert repo.path == repo_path
+            assert repo.path.resolve() == repo_path.resolve()
             repo.close()
 
     def test_init_existing_repo_returns_repo(self):

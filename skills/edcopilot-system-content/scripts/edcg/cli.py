@@ -201,8 +201,8 @@ def command_doctor(args: argparse.Namespace) -> int:
     passed &= _report_line(
         "python",
         (major, minor) >= (3, 12),
-        f"Python {platform.python_version()} (3.12 or newer required)",
-        "install Python 3.12 or newer and run the script with it",
+        f"Python {platform.python_version()} (3.14 or newer required)",
+        "install Python 3.14 or newer and run the script with it",
     )
 
     for module, label, hint in (

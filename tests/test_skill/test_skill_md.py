@@ -385,7 +385,7 @@ class TestFrontmatter:
     def test_compatibility_names_the_runtime_requirements(self):
         compatibility = _body()[0]["compatibility"]
         assert compatibility == (
-            "Requires Windows (EDCoPilot), Python 3.12+, the httpx and "
+            "Requires Windows (EDCoPilot), Python 3.14+, the httpx and "
             "GitPython packages, and git"
         )
         assert len(compatibility) <= 500

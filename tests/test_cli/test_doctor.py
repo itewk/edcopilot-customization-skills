@@ -82,7 +82,7 @@ def test_doctor_fails_on_an_old_python(monkeypatch, capsys):
     assert cli.main(["doctor"]) == 1
     lines = _lines(capsys)
     assert any(line.startswith("FAIL python:") for line in lines)
-    assert any("install Python 3.12" in line for line in lines)
+    assert any("install Python 3.14" in line for line in lines)
 
 
 def test_doctor_reports_missing_packages_with_the_install_hint(monkeypatch, capsys):

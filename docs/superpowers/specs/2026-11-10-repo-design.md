@@ -53,7 +53,7 @@ loaded progressively.
   `EDCG_EDCOPILOT_LOGS_DIR` optionally relocates the logs directory
   (default: sibling `logs/` of the EDCoPilot root).
 
-`edcg.py doctor` verifies the environment on first contact: Python ≥3.12,
+`edcg.py doctor` verifies the environment on first contact: Python ≥3.14,
 `httpx` and GitPython importable, git identity, both roots — one OK/FAIL line
 per check, with fix hints, exiting 1 on any failure.
 
@@ -98,7 +98,7 @@ omission.
 
 ## Constraints
 
-- Python ≥3.12; runtime dependencies: `httpx`, `GitPython` only.
+- Python ≥3.14; runtime dependencies: `httpx`, `GitPython` only.
 - Windows-first (EDCoPilot is a Windows application); paths must not be
   hard-coded to specific drive layouts.
 - `SKILL.md` bodies stay under 500 lines; detailed material lives in
