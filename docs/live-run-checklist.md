@@ -98,13 +98,19 @@ Ask one phase at a time and wait for the answers. Do not merge phases.
       - [ ] The save accepts the file flags in place of `dossier_md` and
             `rules_toml`, and rejects a field supplied both ways.
       - [ ] The commit lands in the **content repository**, the root holding
-            `systems/`. It is made only when `EDCG_AUTO_COMMIT` is true (the
-            default) and that root is a git repository; a `--no-git` bootstrap
-            means no commit here.
+            `systems/`. `save-definition` always commits when that root is a git
+            repository — `EDCG_AUTO_COMMIT` gates the runtime writes in §C, not
+            this one; a `--no-git` bootstrap means no commit here either.
       - [ ] One commit, subject `edcg: scaffold <system> — <summary>` (em dash).
+      - [ ] `git show --stat HEAD` names exactly `systems/<slug>.md`,
+            `systems/<slug>.rules.toml` and, on the first save,
+            `systems/all.rules.toml`. A staging file left in the content root —
+            or any other stray file — is absent from that stat.
       - [ ] In the content repository: `systems/all.rules.toml` is tracked and
             present at HEAD (it landed with the definition commit).
-      - [ ] `git status` in the content repository is clean afterwards.
+      - [ ] The staging files the flags read live outside the content root, or
+            were deleted once the save returned; `git status` in the content
+            repository is clean afterwards.
 
 ## C. Write and stage the content
 
@@ -179,10 +185,12 @@ only when it is a repository.
 - [ ] **Phase 6 — validation loop.** Run `edcg.py validate-definition` and fix
       the artifacts, not the rules.
 - [ ] **Phase 7 — save.** Run `edcg.py save-definition`.
-      - [ ] The commit lands in the **content repository**. It is made only when
-            `EDCG_AUTO_COMMIT` is true (the default) and that root is a git
-            repository; a `--no-git` bootstrap means no commit here.
+      - [ ] The commit lands in the **content repository**. As in §B phase 6 it
+            is made whenever that root is a git repository: `EDCG_AUTO_COMMIT`
+            gates the runtime writes in §C, not this one.
       - [ ] One commit, subject `edcg: update <system> — <summary>` (em dash).
+      - [ ] `git show --stat HEAD` names the dossier and rules files only; a
+            staging file left in the content root stays untracked.
 - [ ] Run `edcg.py writing-brief-data` and `edcg.py get-content` again, then
       revise with `edcg.py rewrite-tag` and `edcg.py write-content`.
       - [ ] EDCoPilot was closed before the first rewrite.

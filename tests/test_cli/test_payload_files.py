@@ -225,6 +225,41 @@ def test_undecodable_file_is_usage_error(monkeypatch, tmp_path, capsys):
     assert captured.out == ""
 
 
+def test_bom_prefixed_file_is_read_as_clean_text(monkeypatch, tmp_path, capsys):
+    """A Windows-editor BOM is stripped, not turned into a misleading finding.
+
+    ``EF BB BF`` is a byte-order mark, not content: read as plain UTF-8 it lands
+    as a stray ``U+FEFF`` at the start of the dossier and the first line's
+    findings describe a file the author never wrote.
+    """
+    root = _content_root(monkeypatch, tmp_path)
+    _write(root / "dossier.md", DOSSIER)
+    _write(root / "rules.toml", RULES)
+    (root / "bom-dossier.md").write_bytes(b"\xef\xbb\xbf" + DOSSIER.encode("utf-8"))
+    payload = json.dumps({"system_name": "Test System"})
+
+    plain_code = _run(
+        ["validate-definition", "--dossier-file", "dossier.md", "--rules-file", "rules.toml"],
+        stdin=payload,
+    )
+    plain = capsys.readouterr()
+    bom_code = _run(
+        [
+            "validate-definition",
+            "--dossier-file",
+            "bom-dossier.md",
+            "--rules-file",
+            "rules.toml",
+        ],
+        stdin=payload,
+    )
+    bom = capsys.readouterr()
+
+    assert (bom_code, bom.out, bom.err) == (plain_code, plain.out, plain.err)
+    assert "\ufeff" not in bom.out
+    assert "UTF-8" not in bom.err
+
+
 def test_save_definition_maps_flags_to_md_toml_keys(
     monkeypatch, tmp_path, capsys, git_repo
 ):
@@ -255,9 +290,11 @@ def test_save_definition_maps_flags_to_md_toml_keys(
     assert code == 0
     assert captured.err == ""
     assert len(result["commit_hash"]) == 8
+    # files_changed reports what the commit actually recorded, so the paths are
+    # git's posix ones on every platform.
     assert result["files_changed"] == [
-        str(Path("systems") / "test-system.md"),
-        str(Path("systems") / "test-system.rules.toml"),
+        "systems/test-system.md",
+        "systems/test-system.rules.toml",
     ]
     # The file contents are the flag payloads, not the stdin fields.
     assert (root / "systems" / "test-system.md").read_text(

@@ -88,7 +88,7 @@ class TestGitRepoOperations:
         assert status["clean"] is False
 
     def test_is_untracked_separates_untracked_from_tracked_paths(self, repo):
-        """is_untracked() is True only for paths inside the repo that git ignores."""
+        """is_untracked() is True only for existing, unignored, untracked paths."""
         untracked = repo.path / "new_file.txt"
         untracked.write_text("content")
         tracked = repo.path / "tracked.txt"

@@ -68,6 +68,9 @@ coverage.xml
 *.tmp
 *.temp
 
+# Superpowers SDD workspace (session ledgers, review packages)
+.superpowers/
+
 # Python venv
 .venv/
 venv/

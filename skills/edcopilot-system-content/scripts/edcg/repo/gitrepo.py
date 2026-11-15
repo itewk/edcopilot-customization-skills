@@ -288,7 +288,7 @@ class GitRepo:
             pass
 
     def is_untracked(self, path: str | Path) -> bool:
-        """Check whether a path is inside this repository and untracked.
+        """Check whether a path is untracked inside this repository.
 
         Git reports paths with forward slashes, so a Windows ``Path`` is
         normalised with ``as_posix()`` before it is compared with
@@ -299,7 +299,8 @@ class GitRepo:
             path: Path to check (relative to the repository root or absolute).
 
         Returns:
-            True when git has never tracked the path, False otherwise.
+            True when the path exists inside this repository, is not tracked,
+            and is not ignored; False otherwise.
         """
         repo = self._require_repo("is_untracked")
         if repo is None:
@@ -356,6 +357,33 @@ class GitRepo:
             except (GitCommandError, ValueError):
                 pass
             return None
+
+    def commit_files(self, rev: str = "HEAD") -> list[str]:
+        """Return the repository-relative paths one commit actually changed.
+
+        The names come from ``git show --name-only --format=``, so they are what
+        git recorded rather than what a caller intended to stage: an ``add``
+        that git refused cannot inflate the list. Git reports paths with
+        forward slashes on every platform, so the result uses posix separators,
+        sorted for a stable report.
+
+        Args:
+            rev: Revision to inspect (a commit hash, ``HEAD``, or anything else
+                git accepts).
+
+        Returns:
+            Sorted posix paths, or an empty list for a non-repository or a
+            revision git cannot read.
+        """
+        repo = self._require_repo("commit_files")
+        if repo is None:
+            return []
+
+        try:
+            names = repo.git.show("--name-only", "--format=", rev).splitlines()
+        except GitCommandError:
+            return []
+        return sorted({name.strip() for name in names if name.strip()})
 
     @staticmethod
     def _validate_branch_name(name: str) -> None:

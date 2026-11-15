@@ -64,7 +64,19 @@ answer it are shipped on this branch:
   `validate_definition`;
 - the spine's step 3-5 pointers and the rules `read this when` row;
 - `save-definition` staging exactly its own files plus the first-save
-  house-rules ride-along.
+  house-rules ride-along, with `files_changed` read back from the commit itself
+  so an add git refused cannot be over-reported.
+
+Two notes from the final review wave (same branch):
+
+- **Follow-up candidate:** `markdb`'s stdin payload is the last one exempt from
+  `_require_fields`, so `{"tags": 5}` reaches the domain layer instead of
+  failing at the reader with an `error:`/`fix:` pair.
+- **Cleanups shipped:** `save_definition`'s docstring now states its commit
+  contract (always commits when the content root is a repository; a tracked,
+  modified `all.rules.toml` is deliberately left dirty for its own commit),
+  `GitRepo.is_untracked`'s docstring matches what it answers, and the
+  `all.rules.toml` literal is the single `ALL_RULES` constant.
 
 **(gate)** The fresh-session rerun is the remaining item before `v1.0.0`. The
 failed run was not salvaged and the content repository was reverted to
@@ -149,8 +161,8 @@ flags and the aggregated error message end to end.
   `0.1.0`) is byte-parity-pinned; em dashes in commit subjects.
 - Wire-protocol strings and the config filename are data, exempt from product
   identity rules.
-- `add_all()` in content/definition commits is old-behavior parity; `init`
-  alone stages selectively.
+- `add_all()` in the runtime (content and marker) commits is old-behavior parity;
+  the definition commit and `init` alone stage selectively (2026-11-15).
 - Inara redirects are not followed (deliberate security deviation).
 - Reference-internal bare-sibling links are an accepted deviation (they
   resolve; a resolution test guards them).

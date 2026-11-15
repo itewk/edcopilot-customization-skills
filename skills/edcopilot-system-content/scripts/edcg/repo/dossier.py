@@ -8,7 +8,7 @@ from edcg.common.config import get_config
 from edcg.common.layout import dossier_path, rules_path, systems_dir
 from edcg.content.custom_file import COMMIT_PREFIX, _append_co_author_trailer
 from edcg.repo.gitrepo import GitRepo
-from edcg.rules.validation import SaveResult
+from edcg.rules.validation import ALL_RULES, SaveResult
 
 
 def save_definition(
@@ -20,7 +20,9 @@ def save_definition(
     """Persist a validated system dossier and rules to the content definitions repo.
 
     This writes the dossier and rules files to the edcopilot-content-definitions
-    repository and creates a git commit with a standardized message.
+    repository and creates a git commit with a standardized message. The commit
+    is made whenever the content root is a git repository; it is not gated by
+    ``EDCG_AUTO_COMMIT``, which governs the runtime writes instead.
 
     Args:
         system_name: The exact system name (must match rules.system.names).
@@ -32,11 +34,24 @@ def save_definition(
             The function prefixes it with "Co-authored-by: ".
 
     Returns:
-        SaveResult with commit_hash (short, 8 chars) and files_changed list.
+        SaveResult with commit_hash (short, 8 chars) and files_changed: the
+        posix-separated paths the commit actually recorded (so an add that git
+        refused cannot be over-reported), or an empty list when there was
+        nothing to commit.
 
     Files written:
     - systems/<slug>.md (dossier)
     - systems/<slug>.rules.toml (rules)
+
+    Commit contents:
+    - the two files above, always;
+    - systems/all.rules.toml on the first save, when it exists and is still
+      untracked — the reviewed house rules ride along with the definition that
+      first needs them;
+    - nothing else. A stray or staging file left in the content root stays
+      untracked. A tracked ``systems/all.rules.toml`` is deliberately NOT
+      committed by this save even when it is modified: house-rule edits are
+      deliberate commits of their own.
 
     Commit message format:
     - New system: "edcg: scaffold {system} — {summary}"
@@ -77,23 +92,24 @@ def save_definition(
 
     # Git operations: always commit when the content root is a repository.
     with GitRepo(repo_root) as repo:
-        repo.add(str(dossier_file.relative_to(repo_root)))
-        repo.add(str(rules_file.relative_to(repo_root)))
-
-        all_rules_file = directory / "all.rules.toml"
-        added_ride_along = False
+        # One staging list, and one source for the report below: what git
+        # accepted is what the commit holds, which is what files_changed says.
+        to_stage = [
+            str(dossier_file.relative_to(repo_root)),
+            str(rules_file.relative_to(repo_root)),
+        ]
+        all_rules_file = directory / ALL_RULES
         if all_rules_file.exists() and repo.is_untracked(all_rules_file):
-            repo.add(str(all_rules_file.relative_to(repo_root)))
-            added_ride_along = True
+            # First save: the reviewed house rules have never been committed,
+            # so the definition that first needs them carries them.
+            to_stage.append(str(all_rules_file.relative_to(repo_root)))
 
+        repo.add(*to_stage)
         commit_hash = repo.commit(commit_message)
 
-    # Determine files changed
-    files_changed = [
-        str(dossier_file.relative_to(repo_root)),
-        str(rules_file.relative_to(repo_root)),
-    ]
-    if added_ride_along:
-        files_changed.append(str(all_rules_file.relative_to(repo_root)))
+        # Derived from the commit itself, not from the staging intent: git is
+        # the only authority on what landed, and its paths are posix on every
+        # platform. Nothing to commit means nothing changed to report.
+        files_changed = repo.commit_files(commit_hash) if commit_hash else []
 
     return SaveResult(commit_hash=commit_hash, files_changed=files_changed)

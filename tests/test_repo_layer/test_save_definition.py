@@ -334,12 +334,19 @@ voices = ["Voice1"]
         assert "?? systems/all.rules.toml" not in _git(repo_root, "status", "--porcelain")
 
     def test_house_rules_not_readded_when_tracked(self, mock_config):
-        """An already-tracked systems/all.rules.toml stays out of files_changed."""
+        """A tracked systems/all.rules.toml stays out of the definition commit.
+
+        House-rule edits are deliberate commits of their own, so a tracked file
+        that is dirty at save time is neither staged nor reported — and it is
+        left dirty for that next commit.
+        """
         repo_root = mock_config.content_definitions_root
         all_rules = repo_root / "systems" / "all.rules.toml"
         all_rules.write_text("[rules]\nversion = 1\n", encoding="utf-8")
         _git(repo_root, "add", "systems/all.rules.toml")
         _git(repo_root, "commit", "-m", "house rules")
+        # An uncommitted house-rule edit, the state a live run is often in.
+        all_rules.write_text("[rules]\nversion = 2\n", encoding="utf-8")
 
         with patch("edcg.repo.dossier.get_config", return_value=mock_config):
             result = save_definition(
@@ -351,5 +358,14 @@ voices = ["Voice1"]
         expected = {"systems/test-system.md", "systems/test-system.rules.toml"}
         assert {Path(f).as_posix() for f in result.files_changed} == expected
         assert committed_files(repo_root) == expected
+        # Still dirty, and not by accident: this save never touched it.
+        assert " M systems/all.rules.toml" in _git(repo_root, "status", "--porcelain")
+        assert all_rules.read_text(encoding="utf-8") == "[rules]\nversion = 2\n"
+
+        # The status above is a literal, so prove git can report the edit at
+        # all: the same porcelain line disappears once the file is committed.
+        _git(repo_root, "add", "systems/all.rules.toml")
+        _git(repo_root, "commit", "-m", "house rules v2")
+        assert "M systems/all.rules.toml" not in _git(repo_root, "status", "--porcelain")
 
 

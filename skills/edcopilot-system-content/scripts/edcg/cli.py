@@ -92,13 +92,23 @@ def _payload() -> dict:
     """Read one JSON object from stdin."""
     text = sys.stdin.read()
     if not text.strip():
-        raise UsageError("expected a JSON payload on stdin\nfix: pipe a JSON object via stdin (e.g., cat payload.json | edcg ...)")
+        raise UsageError(
+            "error: expected a JSON payload on stdin\n"
+            "fix: pipe a JSON object via stdin (e.g., cat payload.json | edcg ...); "
+            "system_name still comes from stdin when using --*-file"
+        )
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise UsageError(f"invalid JSON payload: {exc}\nfix: ensure your JSON is valid and well-formed") from exc
+        raise UsageError(
+            f"error: invalid JSON payload: {exc}\n"
+            "fix: ensure your JSON is valid and well-formed"
+        ) from exc
     if not isinstance(data, dict):
-        raise UsageError("JSON payload must be an object\nfix: the payload should be a JSON dictionary (object)")
+        raise UsageError(
+            "error: JSON payload must be an object\n"
+            "fix: the payload should be a JSON dictionary (object)"
+        )
     return data
 
 
@@ -163,6 +173,11 @@ def _resolve_input_path(raw: str) -> Path:
 def _read_utf8(path: Path, field_name: str) -> str:
     """Read UTF-8 text for ``field_name``, or raise ``UsageError``.
 
+    Decoded as ``utf-8-sig``: byte-identical to ``utf-8`` for a BOM-less file,
+    and a leading BOM (a Windows editor's signature) is stripped instead of
+    arriving as a stray ``U+FEFF`` that corrupts the first line of a dossier or
+    rules file into misleading findings.
+
     A missing, unreadable or non-UTF-8 file is a usage fault: the caller meant
     to hand over text and did not, so the hint names the field, the path and
     the encoding that was expected.
@@ -175,7 +190,7 @@ def _read_utf8(path: Path, field_name: str) -> str:
             "fix: check that the file exists at that path and is readable"
         ) from exc
     try:
-        return raw.decode("utf-8")
+        return raw.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise UsageError(
             f"error: {field_name!r} file is not valid UTF-8: {path} (byte {exc.start})\n"
@@ -927,7 +942,10 @@ review: audit/branch
 
     definition_parser = subparsers.add_parser(
         "validate-definition",
-        help="Validate a dossier and rules pair (JSON on stdin)",
+        help=(
+            "Validate a dossier and rules pair (JSON on stdin, or "
+            "--dossier-file/--rules-file[/--all-rules-file] file flags)"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Example, every field as JSON on stdin:
   python edcg.py validate-definition < definition.json
@@ -965,7 +983,10 @@ from the payload or from its file flag, never both.""",
     definition_parser.set_defaults(func=command_validate_definition)
     save_parser = subparsers.add_parser(
         "save-definition",
-        help="Save a dossier and rules pair (JSON on stdin)",
+        help=(
+            "Save a dossier and rules pair (JSON on stdin, or "
+            "--dossier-file/--rules-file file flags)"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Example, every field as JSON on stdin:
   python edcg.py save-definition < definition.json
