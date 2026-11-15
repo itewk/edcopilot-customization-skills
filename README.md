@@ -29,7 +29,7 @@ The CLI will ask which harness to enable (Claude Code, Cursor, Codex, OpenCode, 
 ## Requirements
 
 - Windows with EDCoPilot installed and run at least once
-- Python 3.12 or later
+- Python 3.14 or later
 - `pip install httpx gitpython`
 - Git with `user.name`/`user.email` configured
 - A skills-compatible chat client

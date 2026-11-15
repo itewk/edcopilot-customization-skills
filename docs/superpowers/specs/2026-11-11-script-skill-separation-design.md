@@ -67,7 +67,7 @@ reviews it with the user, rather than `init` placing it mechanically.
 
 ## Constraints
 
-- Python ≥3.12; stdlib loading (`tomllib`); no new dependencies.
+- Python ≥3.14; stdlib loading (`tomllib`); no new dependencies.
 - The rule TOMLs' content is unchanged byte-for-byte (git mv semantics; the
   validators' expectations and the live-fixture assertions depend on it).
 - `skills-ref validate` and the full hermetic suite stay green.
