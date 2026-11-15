@@ -190,8 +190,10 @@ def _load_payload_files(
     """Fill payload fields from ``--<field>-file`` flags before validation.
 
     A field may arrive from stdin or from its file flag, never from both: no
-    rule picks a winner, so the pair is a usage error. Faults are collected so
-    one call reports every bad file instead of only the first.
+    rule picks a winner, so the pair is a usage error. ``null`` does not count
+    as supplied (the payload reader treats it as absent everywhere else), so a
+    null field is simply overwritten by its file. Faults are collected so one
+    call reports every bad file instead of only the first.
     """
     errors: list[str] = []
     for flag_attr, json_key in flags:
@@ -199,7 +201,7 @@ def _load_payload_files(
         if raw is None:
             continue
         option = "--" + flag_attr.replace("_", "-")
-        if json_key in data:
+        if data.get(json_key) is not None:
             errors.append(
                 f"error: payload field {json_key!r} was given twice: in the JSON "
                 f"payload and via {option}\n"

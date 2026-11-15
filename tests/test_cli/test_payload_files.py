@@ -10,6 +10,7 @@ from stdin or from a file but never from both.
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -268,3 +269,100 @@ def test_save_definition_maps_flags_to_md_toml_keys(
     message = run_git(root, "log", "-1", "--format=%B")
     assert message.startswith("edcg: scaffold Test System")
     assert "Co-authored-by: Test <test@example.com>" in message
+
+
+def test_load_payload_files_fills_all_rules(monkeypatch, tmp_path):
+    """--all-rules-file is wired even when the dossier has no all-rules uses.
+
+    The end-to-end case cannot see this: ``all_rules`` is only consulted when
+    the dossier needs it, so the flag could be ignored and the output would not
+    change. This reads the merged payload directly.
+    """
+    root = _content_root(monkeypatch, tmp_path)
+    _write(root / "dossier.md", DOSSIER)
+    _write(root / "rules.toml", RULES)
+    _write(root / "all_rules.toml", ALL_RULES)
+    data = {"system_name": "Test System"}
+    args = argparse.Namespace(
+        dossier_file="dossier.md",
+        rules_file="rules.toml",
+        all_rules_file="all_rules.toml",
+    )
+
+    cli._load_payload_files(
+        data,
+        args,
+        [
+            ("dossier_file", "dossier"),
+            ("rules_file", "rules"),
+            ("all_rules_file", "all_rules"),
+        ],
+    )
+
+    assert data == {
+        "system_name": "Test System",
+        "dossier": DOSSIER,
+        "rules": RULES,
+        "all_rules": ALL_RULES,
+    }
+
+
+def test_null_payload_field_does_not_conflict_with_its_file_flag(
+    monkeypatch, tmp_path, capsys
+):
+    """Null already means absent everywhere else, so it cannot mean "supplied"."""
+    root = _content_root(monkeypatch, tmp_path)
+    _write(root / "dossier.md", DOSSIER)
+    payload = {"system_name": "Test System", "dossier": None, "rules": RULES}
+
+    code = _run(
+        ["validate-definition", "--dossier-file", "dossier.md"],
+        stdin=json.dumps(payload),
+    )
+    captured = capsys.readouterr()
+
+    assert "given twice" not in captured.err
+    assert code != 2
+    from_files = json.loads(captured.out)
+
+    # The file stood in for the null field: identical answer to passing it.
+    assert _run(
+        ["validate-definition"],
+        stdin=json.dumps({**payload, "dossier": DOSSIER}),
+    ) == code
+    assert json.loads(capsys.readouterr().out) == from_files
+
+
+def test_save_definition_relative_paths_resolve_from_content_root(
+    monkeypatch, tmp_path, capsys, git_repo
+):
+    root = git_repo(files={"README.md": "# content\n"})
+    monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(root))
+    _write(root / "dossier.md", DOSSIER)
+    _write(root / "rules.toml", RULES)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    code = _run(
+        [
+            "save-definition",
+            "--dossier-file",
+            "dossier.md",
+            "--rules-file",
+            "rules.toml",
+        ],
+        stdin=json.dumps({"system_name": "Test System"}),
+    )
+    captured = capsys.readouterr()
+
+    assert code == 0
+    assert "could not read" not in captured.err
+    assert (root / "systems" / "test-system.md").read_text(
+        encoding="utf-8"
+    ).replace("\r\n", "\n") == DOSSIER
+    assert (root / "systems" / "test-system.rules.toml").read_text(
+        encoding="utf-8"
+    ).replace("\r\n", "\n") == RULES
+    # Nothing was read or written relative to the working directory.
+    assert not (elsewhere / "systems").exists()

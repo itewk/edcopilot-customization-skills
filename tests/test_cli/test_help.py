@@ -31,6 +31,22 @@ EXAMPLED_COMMANDS = [
     ["branch", "abort"],
 ]
 
+# What each command's worked example shows the caller. Pinned so that dropping
+# or misspelling a documented key cannot slip through: `_require_fields` only
+# walks the spec, so an absent optional key is invisible to it.
+DOCUMENTED_KEYS = {
+    "validate-definition": {"system_name", "dossier", "rules", "all_rules"},
+    "save-definition": {
+        "system_name",
+        "dossier_md",
+        "rules_toml",
+        "commit_co_author",
+    },
+    "validate-content": {"system_name", "content"},
+    "write-content": {"content_block", "system_name", "commit_co_author"},
+    "rewrite-tag": {"system_name", "tag", "replace"},
+}
+
 STDIN_REDIRECT_RE = re.compile(r"\s<\s+\S+$")
 
 
@@ -115,31 +131,50 @@ def test_the_stateful_commands_document_a_worked_example():
 
 
 def test_the_definition_commands_document_the_file_flags():
+    seen = []
     for parser in _parsers_with_epilog():
         command = _command_of(parser)
         if command not in {"validate-definition", "save-definition"}:
             continue
+        seen.append(command)
         help_text = parser.format_help()
         assert "--dossier-file" in help_text, f"{command} hides --dossier-file"
         assert "--rules-file" in help_text, f"{command} hides --rules-file"
         # Both invocation forms are shown: stdin-only and file flags.
         assert "< definition.json" in parser.epilog
         assert "< system_name.json" in parser.epilog
+    # A vanished epilog must not turn this into a vacuous pass.
+    assert sorted(seen) == ["save-definition", "validate-definition"]
 
 
 def test_every_documented_payload_is_type_valid_for_its_command():
     """A drifted epilog example is a documented contract the CLI rejects."""
-    checked = 0
+    # Every command with a payload spec must have a documented-key decision.
+    assert set(DOCUMENTED_KEYS) == set(cli.PAYLOAD_SPECS)
+
+    seen = []
     for parser in _parsers_with_epilog():
+        command = _command_of(parser)
+        if command not in cli.PAYLOAD_SPECS:
+            continue
+        seen.append(command)
         payload = _json_example(parser)
-        if payload is None:
-            continue
-        spec = cli.PAYLOAD_SPECS.get(_command_of(parser))
-        if spec is None:
-            continue
+        assert payload is not None, f"{command} documents no JSON payload"
+        spec = cli.PAYLOAD_SPECS[command]
+        # Types of the keys it does show, plus required keys that must be there.
         cli._require_fields(payload, spec)
-        checked += 1
-    assert checked >= len(cli.PAYLOAD_SPECS)
+        # An unknown or misspelled key the command would silently ignore.
+        assert set(payload) <= set(spec), (
+            f"{command} documents keys the payload reader does not accept: "
+            f"{sorted(set(payload) - set(spec))}"
+        )
+        # And a dropped optional key, which the type check above cannot see.
+        assert set(payload) == DOCUMENTED_KEYS[command], (
+            f"{command} no longer documents the payload it should: "
+            f"missing {sorted(DOCUMENTED_KEYS[command] - set(payload))}, "
+            f"unexpected {sorted(set(payload) - DOCUMENTED_KEYS[command])}"
+        )
+    assert sorted(seen) == sorted(DOCUMENTED_KEYS)
 
 
 def test_json_epilog_blocks_are_not_reflowed():
