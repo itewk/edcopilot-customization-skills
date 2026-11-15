@@ -77,7 +77,15 @@ def save_definition(
 
     # Git operations: always commit when the content root is a repository.
     with GitRepo(repo_root) as repo:
-        repo.add_all()
+        repo.add(str(dossier_file.relative_to(repo_root)))
+        repo.add(str(rules_file.relative_to(repo_root)))
+
+        all_rules_file = directory / "all.rules.toml"
+        added_ride_along = False
+        if all_rules_file.exists() and repo.is_untracked(all_rules_file):
+            repo.add(str(all_rules_file.relative_to(repo_root)))
+            added_ride_along = True
+
         commit_hash = repo.commit(commit_message)
 
     # Determine files changed
@@ -85,5 +93,7 @@ def save_definition(
         str(dossier_file.relative_to(repo_root)),
         str(rules_file.relative_to(repo_root)),
     ]
+    if added_ride_along:
+        files_changed.append(str(all_rules_file.relative_to(repo_root)))
 
     return SaveResult(commit_hash=commit_hash, files_changed=files_changed)

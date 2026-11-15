@@ -87,6 +87,20 @@ class TestGitRepoOperations:
         assert "new_file.txt" in status["untracked"]
         assert status["clean"] is False
 
+    def test_is_untracked_separates_untracked_from_tracked_paths(self, repo):
+        """is_untracked() is True only for paths inside the repo that git ignores."""
+        untracked = repo.path / "new_file.txt"
+        untracked.write_text("content")
+        tracked = repo.path / "tracked.txt"
+        tracked.write_text("content")
+        repo.add("tracked.txt")
+        repo.commit("Track one file")
+
+        assert repo.is_untracked(untracked) is True
+        assert repo.is_untracked("new_file.txt") is True
+        assert repo.is_untracked(tracked) is False
+        assert repo.is_untracked(repo.path.parent / "outside.txt") is False
+
     def test_status_with_staged_changes(self, repo):
         """Test status() detects staged changes."""
         test_file = repo.path / "staged.txt"
@@ -192,6 +206,14 @@ class TestGitRepoNonRepoHandling:
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             non_repo.add_all()
+            assert len(w) == 1
+            assert "not a git repository" in str(w[0].message).lower()
+
+    def test_is_untracked_on_non_repo_returns_false(self, non_repo):
+        """Test is_untracked() on non-repo is False with warning."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            assert non_repo.is_untracked("anything.txt") is False
             assert len(w) == 1
             assert "not a git repository" in str(w[0].message).lower()
 

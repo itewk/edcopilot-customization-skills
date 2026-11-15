@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from edcg.repo.dossier import save_definition
 from edcg.rules.validation import SaveResult
+from support import run_git as _git
 
 
 # ============================================================
@@ -70,6 +71,12 @@ names = ["Test System"]
 dossier = "systems/test-system.md"
 voices = ["Foreman", "Welder", "Researcher", "LabTech", "GuardSarge", "GuardTrooper"]
 """
+
+
+def committed_files(repo_root: Path) -> set[str]:
+    """The repository-relative paths recorded in the HEAD commit."""
+    shown = _git(repo_root, "show", "--name-only", "--format=", "HEAD")
+    return {line.strip() for line in shown.splitlines() if line.strip()}
 
 
 class TestSaveDefinitionTool:
@@ -285,5 +292,64 @@ voices = ["Voice1"]
         systems_dir = mock_config.content_definitions_root / "systems"
         assert (systems_dir / f"{expected_slug}.md").exists()
         assert (systems_dir / f"{expected_slug}.rules.toml").exists()
+
+    def test_stray_staging_file_not_committed(self, mock_config):
+        """An unrelated untracked file in the root is not swept into the commit."""
+        repo_root = mock_config.content_definitions_root
+        stray = repo_root / "final_payload.json"
+        stray.write_text('{"unrelated": true}', encoding="utf-8")
+
+        with patch("edcg.repo.dossier.get_config", return_value=mock_config):
+            result = save_definition(
+                system_name="Test System",
+                dossier_md=VALID_DOSSIER,
+                rules_toml=VALID_RULES,
+            )
+
+        expected = {"systems/test-system.md", "systems/test-system.rules.toml"}
+        assert {Path(f).as_posix() for f in result.files_changed} == expected
+        assert committed_files(repo_root) == expected
+        assert "?? final_payload.json" in _git(repo_root, "status", "--porcelain")
+
+    def test_house_rules_ride_along_on_first_save(self, mock_config):
+        """An untracked systems/all.rules.toml rides along with the first save."""
+        repo_root = mock_config.content_definitions_root
+        all_rules = repo_root / "systems" / "all.rules.toml"
+        all_rules.write_text("[rules]\nversion = 1\n", encoding="utf-8")
+
+        with patch("edcg.repo.dossier.get_config", return_value=mock_config):
+            result = save_definition(
+                system_name="Test System",
+                dossier_md=VALID_DOSSIER,
+                rules_toml=VALID_RULES,
+            )
+
+        expected = {
+            "systems/test-system.md",
+            "systems/test-system.rules.toml",
+            "systems/all.rules.toml",
+        }
+        assert {Path(f).as_posix() for f in result.files_changed} == expected
+        assert committed_files(repo_root) == expected
+        assert "?? systems/all.rules.toml" not in _git(repo_root, "status", "--porcelain")
+
+    def test_house_rules_not_readded_when_tracked(self, mock_config):
+        """An already-tracked systems/all.rules.toml stays out of files_changed."""
+        repo_root = mock_config.content_definitions_root
+        all_rules = repo_root / "systems" / "all.rules.toml"
+        all_rules.write_text("[rules]\nversion = 1\n", encoding="utf-8")
+        _git(repo_root, "add", "systems/all.rules.toml")
+        _git(repo_root, "commit", "-m", "house rules")
+
+        with patch("edcg.repo.dossier.get_config", return_value=mock_config):
+            result = save_definition(
+                system_name="Test System",
+                dossier_md=VALID_DOSSIER,
+                rules_toml=VALID_RULES,
+            )
+
+        expected = {"systems/test-system.md", "systems/test-system.rules.toml"}
+        assert {Path(f).as_posix() for f in result.files_changed} == expected
+        assert committed_files(repo_root) == expected
 
 

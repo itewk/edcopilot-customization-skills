@@ -287,6 +287,35 @@ class GitRepo:
         except GitCommandError:
             pass
 
+    def is_untracked(self, path: str | Path) -> bool:
+        """Check whether a path is inside this repository and untracked.
+
+        Git reports paths with forward slashes, so a Windows ``Path`` is
+        normalised with ``as_posix()`` before it is compared with
+        :meth:`status`'s untracked list. Paths outside the repository, and any
+        path in a non-repository, are reported as not untracked.
+
+        Args:
+            path: Path to check (relative to the repository root or absolute).
+
+        Returns:
+            True when git has never tracked the path, False otherwise.
+        """
+        repo = self._require_repo("is_untracked")
+        if repo is None:
+            return False
+
+        candidate = Path(path)
+        if not candidate.is_absolute():
+            candidate = self.path / candidate
+
+        try:
+            relative = candidate.resolve().relative_to(self.path.resolve())
+        except ValueError:
+            return False
+
+        return relative.as_posix() in self.status()["untracked"]
+
     def commit(self, message: str) -> Optional[str]:
         """Commit all staged changes with the given message.
 
