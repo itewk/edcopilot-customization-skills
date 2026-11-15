@@ -668,6 +668,25 @@ class TestGitRepoBranchDeletion:
             repo.close()
 
 
+class TestGitRepoCommitFiles:
+    def test_commit_files_reports_a_non_ascii_path_unquoted(self, committed_repo):
+        """Git's default core.quotepath would report a quoted octal escape."""
+        name = "systems/火星站.md"
+        (committed_repo.path / "systems").mkdir()
+        (committed_repo.path / name).write_text("body\n", encoding="utf-8")
+        committed_repo.add_all()
+        committed_repo.commit("non-ascii path")
+
+        assert committed_repo.commit_files() == [name]
+
+    def test_commit_files_lists_only_what_the_commit_changed(self, committed_repo):
+        (committed_repo.path / "note.txt").write_text("note\n", encoding="utf-8")
+        committed_repo.add_all()
+        committed_repo.commit("note")
+
+        assert committed_repo.commit_files() == ["note.txt"]
+
+
 class TestGitRepoCommitsBetween:
     def test_commits_between_lists_only_the_branch_commits(self, committed_repo):
         default = committed_repo.default_branch()

@@ -212,6 +212,9 @@ def test_missing_payload_is_a_usage_error(capsys):
     assert _run(["validate-definition"], stdin="") == 2
     captured = capsys.readouterr()
     assert "JSON payload" in captured.err
+    # --*-file can supply the definition, but system_name still arrives on
+    # stdin, so an empty pipe with those flags is exactly what the hint explains.
+    assert "system_name still comes from stdin" in captured.err
     assert captured.out == ""
 
 

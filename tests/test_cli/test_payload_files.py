@@ -225,21 +225,28 @@ def test_undecodable_file_is_usage_error(monkeypatch, tmp_path, capsys):
     assert captured.out == ""
 
 
-def test_bom_prefixed_file_is_read_as_clean_text(monkeypatch, tmp_path, capsys):
+def test_bom_prefixed_rules_file_is_read_as_clean_text(monkeypatch, tmp_path, capsys):
     """A Windows-editor BOM is stripped, not turned into a misleading finding.
 
     ``EF BB BF`` is a byte-order mark, not content: read as plain UTF-8 it lands
-    as a stray ``U+FEFF`` at the start of the dossier and the first line's
-    findings describe a file the author never wrote.
+    as a stray ``U+FEFF`` at the start of the rules file, and TOML rejects it as
+    ``Invalid statement (at line 1, column 1)``. The BOM run must answer exactly
+    as the clean one.
     """
     root = _content_root(monkeypatch, tmp_path)
     _write(root / "dossier.md", DOSSIER)
     _write(root / "rules.toml", RULES)
-    (root / "bom-dossier.md").write_bytes(b"\xef\xbb\xbf" + DOSSIER.encode("utf-8"))
+    (root / "bom-rules.toml").write_bytes(b"\xef\xbb\xbf" + RULES.encode("utf-8"))
     payload = json.dumps({"system_name": "Test System"})
 
     plain_code = _run(
-        ["validate-definition", "--dossier-file", "dossier.md", "--rules-file", "rules.toml"],
+        [
+            "validate-definition",
+            "--dossier-file",
+            "dossier.md",
+            "--rules-file",
+            "rules.toml",
+        ],
         stdin=payload,
     )
     plain = capsys.readouterr()
@@ -247,9 +254,9 @@ def test_bom_prefixed_file_is_read_as_clean_text(monkeypatch, tmp_path, capsys):
         [
             "validate-definition",
             "--dossier-file",
-            "bom-dossier.md",
+            "dossier.md",
             "--rules-file",
-            "rules.toml",
+            "bom-rules.toml",
         ],
         stdin=payload,
     )
@@ -257,7 +264,35 @@ def test_bom_prefixed_file_is_read_as_clean_text(monkeypatch, tmp_path, capsys):
 
     assert (bom_code, bom.out, bom.err) == (plain_code, plain.out, plain.err)
     assert "\ufeff" not in bom.out
+    assert "Invalid TOML syntax" not in bom.err
     assert "UTF-8" not in bom.err
+
+
+def test_bom_prefixed_dossier_is_saved_without_the_bom(
+    monkeypatch, tmp_path, capsys, git_repo
+):
+    """The stripped BOM must not reach the dossier that gets committed."""
+    root = git_repo(files={"README.md": "# content\n"})
+    monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(root))
+    monkeypatch.setenv("EDCG_AUTO_COMMIT", "false")
+    (root / "bom-dossier.md").write_bytes(b"\xef\xbb\xbf" + DOSSIER.encode("utf-8"))
+    _write(root / "rules.toml", RULES)
+
+    code = _run(
+        [
+            "save-definition",
+            "--dossier-file",
+            "bom-dossier.md",
+            "--rules-file",
+            "rules.toml",
+        ],
+        stdin=json.dumps({"system_name": "Test System"}),
+    )
+
+    assert code == 0
+    saved = (root / "systems" / "test-system.md").read_bytes()
+    assert not saved.startswith(b"\xef\xbb\xbf")
+    assert saved.decode("utf-8").replace("\r\n", "\n") == DOSSIER
 
 
 def test_save_definition_maps_flags_to_md_toml_keys(

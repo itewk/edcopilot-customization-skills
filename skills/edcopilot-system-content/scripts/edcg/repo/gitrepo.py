@@ -365,7 +365,8 @@ class GitRepo:
         git recorded rather than what a caller intended to stage: an ``add``
         that git refused cannot inflate the list. Git reports paths with
         forward slashes on every platform, so the result uses posix separators,
-        sorted for a stable report.
+        sorted for a stable report. ``core.quotepath=false`` keeps a non-ASCII
+        name readable instead of git's default quoted octal escapes.
 
         Args:
             rev: Revision to inspect (a commit hash, ``HEAD``, or anything else
@@ -380,7 +381,9 @@ class GitRepo:
             return []
 
         try:
-            names = repo.git.show("--name-only", "--format=", rev).splitlines()
+            names = repo.git(c="core.quotepath=false").show(
+                "--name-only", "--format=", rev
+            ).splitlines()
         except GitCommandError:
             return []
         return sorted({name.strip() for name in names if name.strip()})
