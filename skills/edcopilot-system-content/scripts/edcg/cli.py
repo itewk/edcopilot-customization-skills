@@ -503,7 +503,15 @@ def command_audit(args: argparse.Namespace) -> int:
 
 def command_validate_definition(args: argparse.Namespace) -> int:
     data = _payload()
-    _require_fields(data, {"dossier": str, "rules": str, "system_name": str})
+    _require_fields(
+        data,
+        {
+            "dossier": str,
+            "rules": str,
+            "system_name": str,
+            "all_rules": (str, False),
+        },
+    )
     result = validate_definition(
         dossier=data["dossier"],
         rules=data["rules"],
@@ -545,10 +553,18 @@ def command_validate_content(args: argparse.Namespace) -> int:
 
 def command_write_content(args: argparse.Namespace) -> int:
     data = _payload()
-    _require_fields(data, {"system_name": str})
+    _require_fields(
+        data,
+        {
+            "system_name": str,
+            "content_block": str,
+            "model": (str, False),
+            "commit_co_author": (str, False),
+        },
+    )
     result = write_content(
         system_name=data["system_name"],
-        content_block=data.get("content_block", ""),
+        content_block=data["content_block"],
         model=data.get("model"),
         commit_co_author=data.get("commit_co_author"),
     )
@@ -563,7 +579,16 @@ def command_get_content(args: argparse.Namespace) -> int:
 
 def command_rewrite_tag(args: argparse.Namespace) -> int:
     data = _payload()
-    _require_fields(data, {"system_name": str, "tag": str})
+    _require_fields(
+        data,
+        {
+            "system_name": str,
+            "tag": str,
+            "remove": (list, False),
+            "replace": (dict, False),
+            "add": (list, False),
+        },
+    )
     result = rewrite_tag(
         system_name=data["system_name"],
         tag=data["tag"],
@@ -828,7 +853,7 @@ Where definition.json is:
   "system_name": "Test System",
   "dossier": "# Test System - system dossier\\n...",
   "rules": "[system]\\nnames = [\\"Test System\\"]\\n",
-  "all_rules": ["rule1", "rule2"]
+  "all_rules": "[rules.content.station_landable]\\nseverity = \\"error\\"\\n"
 }""",
     )
     definition_parser.set_defaults(func=command_validate_definition)

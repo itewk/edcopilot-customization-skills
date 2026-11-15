@@ -1,63 +1,57 @@
-import json
-import pytest
-import sys
+"""Payload type validation: every fault is aggregated into one usage diagnosis.
+
+Each of the five stdin commands reads a JSON object and hands it to
+``_require_fields`` before touching the domain layer. Missing required fields
+and wrong-typed fields are usage errors: exit 2, one ``error:``/``fix:`` pair
+per fault on stderr, nothing on stdout, and no traceback.
+"""
+
 import io
-import contextlib
+import json
 from unittest.mock import patch
-from pathlib import Path
+
 from edcg import cli
 
-def _run(argv, stdin=None):
-    if stdin is None:
-        return cli.main(argv)
-
-    class _Stdin:
-        def read(self):
-            return stdin
-        def readline(self):
-            return self.read() + "\n"
-        def readlines(self):
-            return [self.read()]
-
-    original = sys.stdin
-    sys.stdin = _Stdin()
-    try:
-        return cli.main(argv)
-    finally:
-        sys.stdin = original
 
 def test_dossier_as_object_aggregates_faults(capsys):
-    # The live-run trap: {"system_name": {...}} and nested dossier object.
+    # The live-run trap: {"system_name": {...}} and a nested dossier object.
     payload = {"system_name": {"a": 1}, "dossier": {"x": 1}, "rules": "x"}
-    
     with patch("sys.stdin", io.StringIO(json.dumps(payload))):
         code = cli.main(["validate-definition"])
-            
     assert code == 2
     captured = capsys.readouterr()
-    assert "system_name" in captured.err and "dossier" in captured.err   # both faults, one message
+    assert "system_name" in captured.err and "dossier" in captured.err
+    assert captured.err.count("error:") == 2  # both faults, one message
     assert "fix:" in captured.err
+    assert "Traceback" not in captured.err
     assert captured.out == ""
 
-def test_missing_and_wrong_type_in_one_message(capsys):
-    # The test in brief expects 2 faults for save-definition
+
+def test_save_definition_reports_every_missing_field(capsys):
+    # `rules` is not a save-definition field: it is ignored, and the three
+    # required fields are reported in one message.
     payload = {"rules": 5}
-    
     with patch("sys.stdin", io.StringIO(json.dumps(payload))):
         code = cli.main(["save-definition"])
-            
     assert code == 2
     captured = capsys.readouterr()
-    assert "system_name" in captured.err and "dossier_md" in captured.err and "rules_toml" in captured.err
+    assert "system_name" in captured.err
+    assert "dossier_md" in captured.err
+    assert "rules_toml" in captured.err
+    assert captured.err.count("error:") == 3
     assert captured.out == ""
 
+
 def test_valid_payload_still_reaches_validation(capsys):
+    # A well-formed but invalid definition exits 1 with findings, NOT 2.
     payload = {"system_name": "X", "dossier": "# X\n", "rules": "[system]\n"}
-    
     with patch("sys.stdin", io.StringIO(json.dumps(payload))):
         code = cli.main(["validate-definition"])
-            
-    assert code in (0, 1)
+    captured = capsys.readouterr()
+    assert code == 1
+    assert json.loads(captured.out)["passed"] is False
+    assert captured.err == ""
+
 
 def test_save_definition_wrong_type(capsys):
     payload = {"system_name": "X", "dossier_md": {}, "rules_toml": None}
@@ -66,6 +60,9 @@ def test_save_definition_wrong_type(capsys):
     assert code == 2
     captured = capsys.readouterr()
     assert "dossier_md" in captured.err and "rules_toml" in captured.err
+    assert captured.err.count("error:") == 2
+    assert captured.out == ""
+
 
 def test_validate_content_wrong_type(capsys):
     payload = {"system_name": "X", "content": 3}
@@ -74,14 +71,37 @@ def test_validate_content_wrong_type(capsys):
     assert code == 2
     captured = capsys.readouterr()
     assert "content" in captured.err
+    assert captured.err.count("error:") == 1
+    assert "Traceback" not in captured.err
+    assert captured.out == ""
+
 
 def test_write_content_wrong_type(capsys):
-    payload = {"system_name": None}
+    # content_block reaches custom_file.write_content, which calls .strip():
+    # a nested object there was an AttributeError traceback before the guard.
+    payload = {"system_name": "S", "content_block": {"a": 1}}
     with patch("sys.stdin", io.StringIO(json.dumps(payload))):
         code = cli.main(["write-content"])
     assert code == 2
     captured = capsys.readouterr()
-    assert "system_name" in captured.err
+    assert "content_block" in captured.err
+    assert "must be a str" in captured.err
+    assert "Traceback" not in captured.err
+    assert captured.out == ""
+
+
+def test_write_content_optional_model_must_be_a_string(capsys):
+    # `model` is optional, but its type is checked when present.
+    payload = {"system_name": "S", "content_block": "", "model": 5}
+    with patch("sys.stdin", io.StringIO(json.dumps(payload))):
+        code = cli.main(["write-content"])
+    assert code == 2
+    captured = capsys.readouterr()
+    assert "model" in captured.err
+    assert "must be a str" in captured.err
+    assert "Traceback" not in captured.err
+    assert captured.out == ""
+
 
 def test_rewrite_tag_wrong_type(capsys):
     payload = {"system_name": "X", "tag": ["a"]}
@@ -90,6 +110,34 @@ def test_rewrite_tag_wrong_type(capsys):
     assert code == 2
     captured = capsys.readouterr()
     assert "tag" in captured.err
+    assert captured.err.count("error:") == 1
+    assert captured.out == ""
+
+
+def test_rewrite_tag_optional_remove_must_be_a_list(capsys):
+    # `remove` is optional, but its type is checked when present.
+    payload = {"system_name": "X", "tag": "@T", "remove": "not-a-list"}
+    with patch("sys.stdin", io.StringIO(json.dumps(payload))):
+        code = cli.main(["rewrite-tag"])
+    assert code == 2
+    captured = capsys.readouterr()
+    assert "remove" in captured.err
+    assert "must be a list" in captured.err
+    assert "Traceback" not in captured.err
+    assert captured.out == ""
+
+
+def test_rewrite_tag_optional_fields_may_be_absent(capsys):
+    # Absence of remove/replace/add is not a usage fault: the call gets past
+    # the payload reader to repository resolution.
+    payload = {"system_name": "X", "tag": "@SystemGreeting<~>X"}
+    with patch("sys.stdin", io.StringIO(json.dumps(payload))):
+        code = cli.main(["rewrite-tag"])
+    captured = capsys.readouterr()
+    assert "required field" not in captured.err
+    assert "Traceback" not in captured.err
+    assert code != 2
+
 
 def test_validate_definition_wrong_type(capsys):
     payload = {"system_name": 1}
@@ -98,3 +146,23 @@ def test_validate_definition_wrong_type(capsys):
     assert code == 2
     captured = capsys.readouterr()
     assert "system_name" in captured.err
+    assert captured.err.count("error:") == 3  # the other two required fields too
+
+
+def test_validate_definition_all_rules_must_be_a_string(capsys):
+    # all_rules is TOML text, not a list: a list reached tomllib.loads and
+    # raised TypeError once section 7 made the all-rules check run.
+    payload = {
+        "system_name": "X",
+        "dossier": "# X\n",
+        "rules": "[system]\n",
+        "all_rules": ["rule1", "rule2"],
+    }
+    with patch("sys.stdin", io.StringIO(json.dumps(payload))):
+        code = cli.main(["validate-definition"])
+    assert code == 2
+    captured = capsys.readouterr()
+    assert "all_rules" in captured.err
+    assert "must be a str" in captured.err
+    assert "Traceback" not in captured.err
+    assert captured.out == ""
