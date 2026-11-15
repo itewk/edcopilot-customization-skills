@@ -11,6 +11,9 @@ when you have seen the result described beside it.
 Commands are shown as `edcg.py <subcommand>`, run from the content root as
 `python <skill-dir>/scripts/edcg.py <subcommand>`.
 
+The fresh-session rerun of this checklist is the pre-tag live-run gate. Section
+F records the 2026-11-15 run that replaced the salvage.
+
 ---
 
 ## A. Bootstrap from a blank directory
@@ -27,6 +30,10 @@ Commands are shown as `edcg.py <subcommand>`, run from the content root as
       - [ ] It makes an initial commit unless `--no-git` was passed.
       - [ ] `git log` at the content root shows that commit, and `git status` is
             clean.
+      - [ ] This run passes `--co-author "🤖 <harness> (<models>) <email>"`, and
+            that initial commit carries the trailer (`git log -1 --format=full`).
+            Without the flag the commit is unchanged, so a missing trailer is a
+            failed check, not a default.
       - [ ] With `--no-git` the content root is not a git repository, so no step
             in this checklist commits. Say so before starting, and skip the
             commit checks below.
@@ -77,10 +84,18 @@ Ask one phase at a time and wait for the answers. Do not merge phases.
       - [ ] The rules TOML declares `system.names`, `system.dossier` and
             `system.voices`.
 - [ ] **Phase 5 — validation loop.** Run `edcg.py validate-definition` with the
-      pair on stdin.
+      pair on stdin, or keep the dossier and rules in files and pass
+      `--dossier-file` / `--rules-file` (the payload then carries only
+      `system_name`, and `all_rules` or `--all-rules-file` when present).
       - [ ] Findings are read back to the user and fixed in the artifact, not
             argued away in the rules.
-- [ ] **Phase 6 — save.** Run `edcg.py save-definition` with the pair on stdin.
+      - [ ] One deliberately wrong payload (a field of the wrong type) produces
+            one aggregated `error:`/`fix:` diagnosis on stderr, exit 2, empty
+            stdout, and no traceback.
+- [ ] **Phase 6 — save.** Run `edcg.py save-definition` with the pair on stdin,
+      or with `--dossier-file` / `--rules-file`.
+      - [ ] The save accepts the file flags in place of `dossier_md` and
+            `rules_toml`, and rejects a field supplied both ways.
       - [ ] The commit lands in the **content repository**, the root holding
             `systems/`. It is made only when `EDCG_AUTO_COMMIT` is true (the
             default) and that root is a git repository; a `--no-git` bootstrap
@@ -202,3 +217,46 @@ only when it is a repository.
 | System updated | |
 | EDCoPilot build | |
 | Run by | |
+
+## F. Why this checklist exists — the 2026-11-15 live run
+
+The first real agent-driven use of the skill failed at dossier authoring
+(OpenCode session `ses_e200927cfffeiIMaDStr9VAEmU`, the OB-K b1-8 experiment).
+The lore interview was good. The process was not:
+
+1. **The reference was skipped.** The agent never opened
+   `references/new-system-interview.md`, so the payload contract and the
+   definition checklist were never read.
+2. **The schema was invented.** It guessed the `validate-definition` /
+   `save-definition` payload shapes, including a dossier passed as a JSON
+   object.
+3. **The errors became archaeology.** A wrong payload type reached the domain
+   layer and came back as a Python traceback, so each turn was spent inferring
+   a field name from a stack trace instead of reading it in a document.
+4. **The retry loop ended the session.** Four turns of guess-and-crash and the
+   human stopped the run. The content repository was reverted to `219b17f` and
+   the partial definition was not salvaged.
+
+What now exists to break that chain, one fix per link:
+
+- **Aggregated diagnosis.** `validate-definition` and `save-definition`
+  validate every payload field at once: one `error:` line plus its `fix:` hint
+  per fault, on stderr, exit 2, empty stdout, never a traceback.
+- **File flags.** `--dossier-file` / `--rules-file` (and `--all-rules-file`)
+  let the command read the documents from disk, so no agent has to hand-build a
+  JSON string around a whole dossier.
+- **A worked rules example.** `references/rules.md` §"Authoring a system rules
+  file" carries the minimal valid per-system file, and a test runs it through
+  `validate_definition` so it cannot drift.
+- **Spine pointers.** `SKILL.md` step 3 says to read the interview reference
+  first; steps 4 and 5 name every payload field and every file flag, and the
+  read-this-when row sends a rules author to the reference.
+- **Commit hygiene.** `save-definition` stages exactly the dossier and rules
+  files plus the first-save house-rules ride-along, so a stray file in the
+  working tree cannot ride into the definition commit.
+
+**The gate.** Nothing from the failed run was salvaged. The pre-tag live-run
+gate is a fresh-session rerun of this checklist on a freshly bootstrapped
+repository: it must exercise `init --co-author` (A), one deliberately wrong
+payload and the file flags (B, phases 5 and 6), and reach `passed: true` →
+`save-definition` without the agent ever guessing a payload shape.
