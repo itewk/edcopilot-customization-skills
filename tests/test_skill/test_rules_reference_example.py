@@ -15,7 +15,11 @@ from pathlib import Path
 import pytest
 
 from edcg.rules.dossier import DOSSIER_SECTIONS
-from edcg.rules.validation import validate_definition
+from edcg.rules.validation import (
+    RULE_DATA_DIR,
+    load_base_config,
+    validate_definition,
+)
 
 SKILL_DIR = (
     Path(__file__).resolve().parents[2]
@@ -140,7 +144,12 @@ def test_example_voices_match_the_example_prose():
 
 @pytest.mark.parametrize("voice", ["Foreman", "Quartermaster"])
 def test_example_voice_names_are_one_token(voice):
-    """``syntax.voice_name`` allows no spaces, so the example cannot show one."""
+    """``syntax.voice_name`` allows no spaces, so the example cannot show one.
+
+    This list is what pins the example's voice names. The definition run above
+    cannot: it builds the dossier's section 8 from ``system["voices"]``, so a
+    rename there stays self-consistent and still passes the validator.
+    """
     system = _example()["system"]
     assert voice in system["voices"]
     assert " " not in voice
@@ -166,6 +175,32 @@ def test_example_shows_a_station_bound_override():
             )
             low, high = pair
             assert isinstance(low, int) and isinstance(high, int) and low <= high
+
+
+def test_example_bound_kinds_are_real_tag_kinds():
+    """A bound key that names no tag kind is inert: in production it only warns.
+
+    ``rule_content_bounds`` reads the known kinds from ``base.toml``'s
+    ``[kinds]``, so that table is the authority the example must agree with.
+    """
+    known_kinds = set(load_base_config(RULE_DATA_DIR).get("kinds", {}))
+    assert known_kinds, "base.toml declares no [kinds]"
+
+    stations = _example()["content"]["bounds"]["stations"]
+    for station, kinds in stations.items():
+        for kind in kinds:
+            assert kind in known_kinds, (
+                f"station {station!r} bounds unknown tag kind {kind!r}; "
+                f"known kinds: {sorted(known_kinds)}"
+            )
+
+
+def test_example_declares_no_rules():
+    """A system file only overrides; declaring a rule there is refused."""
+    assert "rules" not in _example(), (
+        "the example must not declare [rules.*]: a layer that only overrides "
+        "may not declare rules"
+    )
 
 
 def test_example_dossier_path_is_relative_to_the_content_root():

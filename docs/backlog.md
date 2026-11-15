@@ -43,10 +43,10 @@ record until the `v1.0.0` tag.
 7. ~~Docs accuracy sweep~~ — **resolved** (`0e088ac`): CONTRIBUTING counts
    removed (guarded), update-interview duplication fixed (guarded) and
    taxonomy completed.
-8. ~~`skills-ref` pin~~ - **resolved** (`bc5e90d`): CI pins the install to
+8. ~~`skills-ref` pin~~ — **resolved** (`bc5e90d`): CI pins the install to
    commit `83021e2be457a9b6679148719c1f6074f0ad975e`, validated locally.
 
-### Live-run UX fixes (2026-11-15) - shipped, one gate left
+### Live-run UX fixes (2026-11-15) — shipped, one gate left
 
 The first agent-driven live run failed before `validate-definition`: the
 interview reference was skipped, the payload schema was invented, wrong types
@@ -55,7 +55,7 @@ recorded in `docs/live-run-checklist.md` §F; plan
 `docs/superpowers/plans/2026-11-15-live-run-ux-fixes.md`). The five fixes that
 answer it are shipped on this branch:
 
-- aggregated payload diagnosis - every missing or wrong-typed field in one
+- aggregated payload diagnosis — every missing or wrong-typed field in one
   `error:`/`fix:` message on stderr, exit 2, never a traceback;
 - `--dossier-file` / `--rules-file` / `--all-rules-file` on
   `validate-definition`, `--dossier-file` / `--rules-file` on
@@ -129,7 +129,7 @@ flags and the aggregated error message end to end.
 ## Release gates
 
 1. **(gate) First GitHub Actions run** — never executed on real Actions.
-2. **(gate) Live human-gated run** - `docs/live-run-checklist.md` end-to-end
+2. **(gate) Live human-gated run** — `docs/live-run-checklist.md` end-to-end
    on the real machine (blank-dir bootstrap, new system, update of an
    existing system, listening checks, in-game test + database upload). This is
    the fresh-session rerun that replaces the abandoned 2026-11-15 salvage as

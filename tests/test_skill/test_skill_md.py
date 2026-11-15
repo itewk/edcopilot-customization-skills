@@ -664,6 +664,54 @@ class TestCommandList:
             assert "--system" in row, f"gather-facts row omits --system: {row}"
 
 
+# The parenthesised payload shorthand each definition step carries:
+# "(JSON stdin: `system_name`, ...)". Bounded at the first ")", because the
+# clause's only other parentheses would be in prose after it.
+PAYLOAD_CLAUSE_RE = re.compile(r"JSON stdin:(?P<clause>[^)]*)\)")
+
+
+def _step_naming(command: str) -> str:
+    """The normalised Process step that runs ``command``."""
+    for step in _process_steps(_body()[1]):
+        if f"edcg.py {command}" in step:
+            return step
+    raise AssertionError(f"no ## Process step names edcg.py {command}")
+
+
+def _named_payload_fields(command: str) -> set[str]:
+    """The field names a step lists in backticks after ``JSON stdin:``.
+
+    Flags are filtered out (``--dossier-file`` and friends), so what remains is
+    the payload vocabulary the step claims the command reads.
+    """
+    clause = PAYLOAD_CLAUSE_RE.search(_step_naming(command))
+    assert clause is not None, f"the step for {command} names no JSON stdin payload"
+    return {
+        span
+        for span in BACKTICK_SPAN_RE.findall(clause.group("clause"))
+        if not span.startswith("-")
+    }
+
+
+class TestDefinitionPayloadFields:
+    """Steps 4-5 spell the payload fields, so they can drift from the parser."""
+
+    @pytest.mark.parametrize(
+        "command",
+        ["validate-definition", "save-definition"],
+    )
+    def test_each_step_names_exactly_the_fields_its_command_reads(self, command):
+        """A renamed or forgotten field here is exactly the live-run failure."""
+        from edcg.cli import PAYLOAD_SPECS
+
+        expected = set(PAYLOAD_SPECS[command])
+        named = _named_payload_fields(command)
+        assert named == expected, (
+            f"the ## Process step for {command} names {sorted(named)}; "
+            f"PAYLOAD_SPECS declares {sorted(expected)}"
+        )
+
+
 class TestProductIdentity:
     """The skill must read as a standalone product."""
 

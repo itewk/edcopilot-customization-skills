@@ -18,7 +18,7 @@ why = "Only a station with landing pads can greet a Commander."
 |---|---|---|
 | base | the skill's `scripts/edcg/rules/data/base.toml` | Tool-wide defaults and the dossier spine. Not copied into the content repository. |
 | house | `systems/all.rules.toml` | Project policy for every system: image style, banned filters, extra rules. |
-| system | `systems/<slug>.rules.toml` | What one system overrides or adds. |
+| system | `systems/<slug>.rules.toml` | What one system overrides. |
 
 Override **precedence** is base, then house, then system: the most specific
 layer wins for every key it declares, and the other keys keep their inherited
@@ -88,8 +88,8 @@ the per-station bound override described under Bounds below; it wins over the
 system's kind bound, which wins over the base default.
 
 Do not declare rules here. A rule that applies to every system belongs in
-`systems/all.rules.toml`; a system file that declares one is refused, because
-the declaration has no layer to belong to.
+`systems/all.rules.toml`; a layer that only overrides may not declare rules, and
+a system file that tries is refused.
 
 `edcg.py validate-definition` is the checker for the pair. Its findings name
 the rule and what to change — a voice used in section 8 but missing from

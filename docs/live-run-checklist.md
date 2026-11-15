@@ -12,7 +12,8 @@ Commands are shown as `edcg.py <subcommand>`, run from the content root as
 `python <skill-dir>/scripts/edcg.py <subcommand>`.
 
 The fresh-session rerun of this checklist is the pre-tag live-run gate. Section
-F records the 2026-11-15 run that replaced the salvage.
+F records the 2026-11-15 failure, why its salvage was abandoned, and what
+replaced it: this rerun.
 
 ---
 
@@ -220,9 +221,10 @@ only when it is a repository.
 
 ## F. Why this checklist exists — the 2026-11-15 live run
 
-The first real agent-driven use of the skill failed at dossier authoring
-(OpenCode session `ses_e200927cfffeiIMaDStr9VAEmU`, the OB-K b1-8 experiment).
-The lore interview was good. The process was not:
+The first real agent-driven use of the skill failed at dossier authoring (the
+recorded OB-K b1-8 experiment session; the analysis is in
+`docs/superpowers/specs/2026-11-15-live-run-ux-fixes-design.md`). The lore
+interview was good. The process was not:
 
 1. **The reference was skipped.** The agent never opened
    `references/new-system-interview.md`, so the payload contract and the
@@ -237,7 +239,7 @@ The lore interview was good. The process was not:
    human stopped the run. The content repository was reverted to `219b17f` and
    the partial definition was not salvaged.
 
-What now exists to break that chain, one fix per link:
+What now exists to break that chain:
 
 - **Aggregated diagnosis.** `validate-definition` and `save-definition`
   validate every payload field at once: one `error:` line plus its `fix:` hint
