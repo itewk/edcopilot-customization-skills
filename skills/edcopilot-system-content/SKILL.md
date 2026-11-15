@@ -97,9 +97,9 @@ Run every command from the content root as `python <skill-dir>/scripts/edcg.py <
    has no entry, skip gathering and start the interview from the user's
    description. Update: `edcg.py update-scan` and read this system's delta
    entry.
-3. **Interview.** New: the six phases in [`references/new-system-interview.md`](references/new-system-interview.md). Update: the seven phases in [`references/update-interview.md`](references/update-interview.md). One phase at a time; wait for answers.
-4. **Validate the definition.** `edcg.py validate-definition` (JSON stdin: dossier, rules, and the house rules when present). Fix every `error` and repeat until `passed` is true. Warnings are understood, not ignored.
-5. **Save the definition.** `edcg.py save-definition` (JSON stdin, including `commit_co_author`). Verify the returned commit hash with `git log -1 --oneline`.
+3. **Interview.** New: the six phases in [`references/new-system-interview.md`](references/new-system-interview.md). Update: the seven phases in [`references/update-interview.md`](references/update-interview.md). One phase at a time; wait for answers. Read the interview reference before asking the first interview question; its phases and its validation checklist are the workflow.
+4. **Validate the definition.** `edcg.py validate-definition` (JSON stdin: `system_name`, `dossier`, `rules`, and `all_rules` when present; or pass `--dossier-file` / `--rules-file` / `--all-rules-file` instead of embedding the documents — see the command's `--help` example). Fix every `error` and repeat until `passed` is true. Warnings are understood, not ignored.
+5. **Save the definition.** `edcg.py save-definition` (JSON stdin: `system_name`, `dossier_md`, `rules_toml`, `commit_co_author`; or `--dossier-file` / `--rules-file` — note the field names differ from validate-definition's). Verify the returned commit hash with `git log -1 --oneline`.
 6. **Preview gate.** Offer a representative sample (about 8-10 lines) before the full generation; on acceptance show it, take at most one round of changes, then continue.
 7. **Writing brief.** `edcg.py writing-brief-data --system <name>` supplies the exact tag lines, bounds and voices. Do not invent tag lines.
 8. **Write the block.** Compose the content from the brief. Update mode: first `edcg.py get-content --system <name>` to read the exact existing lines, then `edcg.py rewrite-tag` for every removal, replacement or addition (staged, not committed).
