@@ -115,3 +115,55 @@ def test_init_stages_only_config(tmp_path, monkeypatch, capsys):
     assert committed == [cli.CONFIG_FILENAME]
     status = _git(tmp_path, "status", "--porcelain")
     assert "?? unrelated.txt" in status
+
+def test_init_scaffold_message_without_co_author(tmp_path, monkeypatch, capsys):
+    # The invariant: without --co-author the scaffolding commit is unchanged.
+    monkeypatch.setenv("GIT_AUTHOR_NAME", "Init Test")
+    monkeypatch.setenv("GIT_AUTHOR_EMAIL", "init@example.com")
+    monkeypatch.setenv("GIT_COMMITTER_NAME", "Init Test")
+    monkeypatch.setenv("GIT_COMMITTER_EMAIL", "init@example.com")
+
+    assert cli.main(["init"]) == 0
+    data = _json(capsys)
+
+    assert data["git"]["initialized"] is True
+    assert data["git"]["commit"]
+    body = _git(tmp_path, "log", "-1", "--format=%B")
+    assert body.strip() == "edcg: scaffold content repository"
+    assert "Co-authored-by" not in body
+
+
+def test_init_scaffold_appends_co_author_trailer(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("GIT_AUTHOR_NAME", "Init Test")
+    monkeypatch.setenv("GIT_AUTHOR_EMAIL", "init@example.com")
+    monkeypatch.setenv("GIT_COMMITTER_NAME", "Init Test")
+    monkeypatch.setenv("GIT_COMMITTER_EMAIL", "init@example.com")
+    co_author = "🤖 Test Harness (test-model) <test@example.com>"
+
+    assert cli.main(["init", "--co-author", co_author]) == 0
+    data = _json(capsys)
+
+    assert data["git"]["initialized"] is True
+    assert data["git"]["commit"]
+    body = _git(tmp_path, "log", "-1", "--format=%B")
+    assert body.strip() == (
+        f"edcg: scaffold content repository\n\nCo-authored-by: {co_author}"
+    )
+
+
+def test_init_scaffold_blank_co_author_is_ignored(tmp_path, monkeypatch, capsys):
+    # The helper swallows blank values, so a whitespace-only flag adds nothing.
+    monkeypatch.setenv("GIT_AUTHOR_NAME", "Init Test")
+    monkeypatch.setenv("GIT_AUTHOR_EMAIL", "init@example.com")
+    monkeypatch.setenv("GIT_COMMITTER_NAME", "Init Test")
+    monkeypatch.setenv("GIT_COMMITTER_EMAIL", "init@example.com")
+
+    assert cli.main(["init", "--co-author", "   "]) == 0
+    data = _json(capsys)
+
+    assert data["git"]["initialized"] is True
+    assert data["git"]["commit"]
+    body = _git(tmp_path, "log", "-1", "--format=%B")
+    assert body.strip() == "edcg: scaffold content repository"
+    assert "Co-authored-by" not in body
+

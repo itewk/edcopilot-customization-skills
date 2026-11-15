@@ -33,7 +33,7 @@ from edcg.common.config import (
     resolve_edcopilot_root,
 )
 from edcg.common.layout import CUSTOM_FILE_NAME
-from edcg.content.custom_file import write_content
+from edcg.content.custom_file import write_content, _append_co_author_trailer
 from edcg.content.markdb import custom_file_exists, markdb_add, markdb_remove
 from edcg.content.rewrite import get_system_content, rewrite_tag
 from edcg.facts.facts import gather_facts
@@ -337,7 +337,9 @@ def command_init(args: argparse.Namespace) -> int:
             # Stage only what init created. An existing repository may hold
             # unrelated untracked files; they must stay untracked.
             repo.add(CONFIG_FILENAME)
-            commit = repo.commit("edcg: scaffold content repository")
+            commit_message = "edcg: scaffold content repository"
+            commit_message = _append_co_author_trailer(commit_message, args.co_author)
+            commit = repo.commit(commit_message)
         git_info = {"initialized": True, "commit": commit}
         if commit is None:
             return _fail(
@@ -778,6 +780,11 @@ review: audit/branch
     )
     init_parser.add_argument(
         "--no-git", action="store_true", help="Do not run git init"
+    )
+    init_parser.add_argument(
+        "--co-author",
+        help="Co-author trailer value for the scaffolding commit (formatted as '🤖 <harness> (<models>) <email>')",
+        default=None,
     )
     init_parser.set_defaults(func=command_init)
 

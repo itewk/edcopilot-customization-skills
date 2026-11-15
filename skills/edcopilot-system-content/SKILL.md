@@ -50,7 +50,9 @@ subject.
    confirm with the user first ("this directory isn't a content repository yet
    — set one up here?"), then run `edcg.py init`. It writes the config file, a
    `systems/` directory and, unless `--no-git` is passed, an initial commit. Offer
-   `--no-git` when the user does not want a repository.
+   `--no-git` when the user does not want a repository. If your harness requires
+   commit trailers, pass `--co-author "🤖 <harness> (<models>) <email>"` naming
+   your own harness and model(s) so the scaffolding commit records attribution.
 3. **Adopt the house rules.** If `systems/all.rules.toml` does not exist: if
    `systems/all.rules.toml.example` exists (a legacy scaffold), promote it —
    copy it to `systems/all.rules.toml` and delete the redundant example;

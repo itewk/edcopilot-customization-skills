@@ -142,3 +142,8 @@ record until the `v1.0.0` tag.
 - Usage errors (exit 2) print their message on stderr and no JSON on stdout, so
   a script that parses stdout never mistakes a usage error for a data payload
   (2026-11-12).
+- Commit attribution is one trailer, `Co-authored-by: 🤖 <harness> (<models>)
+  <email>`, with no separate `Models:` line; model and role live inside the
+  co-author value. `init --co-author` is opt-in: without it the scaffolding
+  commit is byte-identical to before, and a blank value adds no trailer
+  (2026-11-15).
