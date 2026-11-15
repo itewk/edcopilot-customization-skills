@@ -1,6 +1,6 @@
 # EDCoPilot Customization Skills
 
-A collection of Agent Skills (agentskills.io) for authoring and updating EDCoPilot speech content for Elite Dangerous colonisation systems — the agent interviews you, records the design as a dossier and rules, writes and validates the speech content, and walks the marker cycle that makes EDCoPilot pick it up. Link to the founding spec at docs/superpowers/specs/2026-11-10-repo-design.md.
+A collection of Agent Skills for authoring and updating EDCoPilot speech content.
 
 ## Available skills
 
