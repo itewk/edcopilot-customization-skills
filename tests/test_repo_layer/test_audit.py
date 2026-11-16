@@ -513,7 +513,7 @@ def test_source_status_and_report_dataclasses_have_expected_defaults() -> None:
 
 
 def test_audit_cli_injects_gather_facts_and_prints_the_report(
-    monkeypatch, capsys
+    monkeypatch, capsys, tmp_path
 ) -> None:
     """The CLI audit gathers once, with the loaded config, and prints JSON.
 
@@ -532,6 +532,9 @@ def test_audit_cli_injects_gather_facts_and_prints_the_report(
         spansh_stations=[spansh_station()],
     )
     config = empty_config(inara_api_key="key", spansh_enabled=True)
+    # The command's next-step hint looks for the system's dossier under the
+    # content root, so the stub config carries the root it resolves against.
+    config.content_definitions_root = tmp_path
 
     async def fake_gather(system_name: str, received_config):
         assert system_name == "Alpha"

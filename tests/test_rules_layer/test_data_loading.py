@@ -13,8 +13,14 @@ def test_rule_data_lives_in_package():
         assert (data / name).is_file(), name
 
 def test_no_script_references_assets():
+    # assets/ is agent-facing only: no script may load rule data or templates
+    # from it. The single permitted mention is the init command's next-step
+    # hint, which is prose telling the agent to copy the example rules file -
+    # not a path this package reads.
+    permitted = "assets/all.rules.toml.example"
     for py in SCRIPTS.rglob("*.py"):
-        assert "assets" not in py.read_text(encoding="utf-8"), py
+        text = py.read_text(encoding="utf-8").replace(permitted, "")
+        assert "assets" not in text, py
 
 def test_loader_is_module_relative():
     for name in ("engine.py", "validation.py"):

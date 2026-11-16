@@ -79,7 +79,18 @@ def _json_default(value: Any) -> Any:
     return str(value)
 
 
+def _emit_next_hint(message: str) -> None:
+    """Print the workflow's next step to stderr, the channel doctor uses.
+
+    Hints are advice, never part of the data answer: they ride on stderr after
+    the JSON so a caller parsing stdout sees a byte-identical payload, and a
+    caller reading the terminal is told which reference file carries the flow.
+    """
+    print(f"next: {message}", file=sys.stderr)
+
+
 def _emit(payload: Any) -> None:
+    """Print JSON to stdout."""
     print(json.dumps(payload, indent=2, ensure_ascii=False, default=_json_default))
 
 
@@ -485,6 +496,11 @@ def command_init(args: argparse.Namespace) -> int:
             "git": git_info,
         }
     )
+    _emit_next_hint(
+        "adopt the house rules (SKILL.md Setup step 3) - copy "
+        "assets/all.rules.toml.example to systems/all.rules.toml and review each "
+        "section with the user, then gather facts for the system"
+    )
     return 0
 
 
@@ -582,6 +598,17 @@ def command_gather_facts(args: argparse.Namespace) -> int:
     config = get_config()
     facts = asyncio.run(gather_facts(args.system, config))
     _emit(_facts_dict(facts))
+    if facts.raven_system:
+        _emit_next_hint(
+            "interview with these Raven facts - read "
+            "references/new-system-interview.md Phase 1 (high-level concept); "
+            "do not re-ask what Raven answered"
+        )
+    else:
+        _emit_next_hint(
+            "no Raven entry - start the interview from the user's description; "
+            "read references/new-system-interview.md Phase 1 (high-level concept)"
+        )
     return 0
 
 
@@ -602,6 +629,18 @@ def command_audit(args: argparse.Namespace) -> int:
     facts = asyncio.run(gather_facts(args.system, config))
     report = build_audit_report(facts, config)
     _emit(asdict(report))
+    # The dossier is the definition file the interview flows read, so its
+    # presence in systems/ is what decides new system versus update.
+    if layout.dossier_path(config, facts.system_name).is_file():
+        _emit_next_hint(
+            "this system has a definition - read references/update-interview.md "
+            "and run the seven phases"
+        )
+    else:
+        _emit_next_hint(
+            "this system has no definition - read "
+            "references/new-system-interview.md and run the six phases"
+        )
     return 0 if report.passed else 1
 
 
