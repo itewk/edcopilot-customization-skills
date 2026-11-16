@@ -480,29 +480,28 @@ class GitRepo:
         except GitCommandError:
             return False
 
-    def log_paths(self, prefix: str) -> list[str]:
-        """Return the commits that touched ``prefix``, newest first.
+    def log_paths(self, *paths: str) -> list[str]:
+        """Return the commits that touched any of ``paths``, newest first.
 
-        ``prefix`` is a repository-relative path prefix, so ``systems/<slug>``
-        matches the dossier and the rules file together. Git's pathspec matches
-        an exact path or a directory, so the prefix is widened to a wildcard
-        here rather than requiring the caller to know which half exists.
-        Only the hashes are returned: the caller asks whether history holds a
-        commit for that path.
+        Each entry is a repository-relative exact path. Exact paths, not
+        wildcards: a prefix glob would make ``systems/sol`` match
+        ``systems/sol-prime.md`` and report a sibling system's commit as this
+        one's. Git's pathspec already matches exact files, including a path
+        that a commit added and a later commit deleted.
 
         Args:
-            prefix: Repository-relative path prefix.
+            paths: Repository-relative paths (one or more).
 
         Returns:
             Full commit hashes, newest first; an empty list for a
-            non-repository or a prefix no commit touched.
+            non-repository or paths no commit touched.
         """
         repo = self._require_repo("log_paths")
-        if repo is None:
+        if repo is None or not paths:
             return []
 
         try:
-            output = repo.git.log("--format=%H", "--", f"{prefix}*")
+            output = repo.git.log("--format=%H", "--", *paths)
         except GitCommandError:
             return []
         return [line.strip() for line in output.splitlines() if line.strip()]

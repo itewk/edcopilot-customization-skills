@@ -146,6 +146,11 @@ def _authored_tags(config: Config) -> tuple[dict[str, list[Tag]], str | None]:
     """
     resolved = resolve_edcopilot_root(config.content_definitions_root, os.environ)
     if resolved.path is None:
+        if resolved.stale is not None:
+            return {}, (
+                "EDCoPilot's root is configured but no longer exists "
+                f"({resolved.stale})"
+            )
         return {}, "EDCoPilot's root is not configured"
 
     custom_file = resolved.path / CUSTOM_FILE_NAME
@@ -155,6 +160,11 @@ def _authored_tags(config: Config) -> tuple[dict[str, list[Tag]], str | None]:
     base = load_base_config(RULE_DATA_DIR)
     try:
         parsed = parse_content(custom_file, PROVENANCE_RE, load_kinds(base))
+    except UnicodeDecodeError:
+        # A file in another encoding is not a readable custom file. Unicode
+        # errors are ValueErrors, not OSErrors, so they would otherwise reach
+        # main's ValueError handler and turn a report into exit 1.
+        return {}, "the custom file cannot be read (not valid UTF-8)"
     except OSError as exc:
         # A locked or unreadable file is a probe that could not run, not an
         # empty file (EDCoPilot itself may hold it open on Windows). Saying so
@@ -184,24 +194,32 @@ def _declared_name(directory: Path, slug: str) -> str | None:
     rules_file = directory / f"{slug}.rules.toml"
     try:
         data = tomllib.loads(rules_file.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError):
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+        # Unreadable, wrongly encoded or unparsable: a file the report cannot
+        # name a system from, not a crash and not exit 1 (D9).
         return None
-    names = data.get("system", {}).get("names", [])
+    system = data.get("system")
+    if not isinstance(system, dict):
+        # `system = 5` is valid TOML and not a system table: a shape the report
+        # cannot name, not a crash.
+        return None
+    names = system.get("names", [])
     if isinstance(names, list) and names and isinstance(names[0], str):
         return names[0]
     return None
 
 
 def _definition_commits(config: Config, slug: str) -> int:
-    """How many commits touched ``systems/<slug>`` (dossier or rules file)."""
+    """How many commits touched the system's dossier or rules file."""
     root = config.content_definitions_root
-    if not (root / ".git").exists():
+    if not GitRepo.is_repo(root):
         # A directory that is not a repository has no history to report. The
-        # marker file is probed rather than GitRepo's non-repo methods, which
-        # warn: a report must not write diagnostics it cannot act on.
+        # repository line already reports the root, so this probe stays quiet:
+        # GitRepo's non-repo methods warn, and a report must not write a
+        # diagnostic it cannot act on.
         return 0
     with GitRepo(root) as repo:
-        return len(repo.log_paths(f"systems/{slug}"))
+        return len(repo.log_paths(f"systems/{slug}.md", f"systems/{slug}.rules.toml"))
 
 
 def _observe(

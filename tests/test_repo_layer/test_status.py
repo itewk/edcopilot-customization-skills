@@ -14,7 +14,7 @@ from edcg.common.config import CONFIG_FILENAME, Config
 from edcg.common.layout import CUSTOM_FILE_NAME
 from edcg.content.rewrite import get_system_content
 from edcg.repo.status import HEADING, build_status
-from support import commit_all
+from support import commit_all, run_git
 
 NAME = "Test System"
 SLUG = "test-system"
@@ -174,12 +174,52 @@ class TestDefinitionState:
             "validation, Phase 6 save)"
         ) in lines
 
+    def test_a_sibling_slugs_commit_is_not_this_systems_commit(self, git_repo):
+        """``systems/sol`` must never match ``systems/sol-prime.md``."""
+        root = git_repo(files={"README.md": "# empty\n"})
+        _write_definition(root)
+        sibling = f"systems/{SLUG}-2.md"
+        (root / sibling).write_text(
+            "# Test System 2 — system dossier\n", encoding="utf-8"
+        )
+        # Only the sibling lands in history; the pair stays uncommitted.
+        run_git(root, "add", sibling)
+        run_git(root, "commit", "-m", "the sibling's commit only")
+
+        lines = _lines(root, NAME)
+
+        assert (
+            f"[ ] definition: files exist at systems/{SLUG}.md and "
+            f"systems/{SLUG}.rules.toml but no commit touches systems/{SLUG} - "
+            "run edcg.py save-definition so the pair lands in git "
+            "(references/new-system-interview.md Phase 6)"
+        ) in lines
+
+    def test_a_non_git_directory_reports_an_uncommitted_definition(self, tmp_path):
+        """No repository is a state with no history, not a warning or a crash."""
+        _write_definition(tmp_path)
+
+        lines = _lines(tmp_path, NAME)
+
+        assert (
+            f"[ ] definition: files exist at systems/{SLUG}.md and "
+            f"systems/{SLUG}.rules.toml but no commit touches systems/{SLUG} - "
+            "run edcg.py save-definition so the pair lands in git "
+            "(references/new-system-interview.md Phase 6)"
+        ) in lines
+
 
 class TestContentState:
     """Authored content is counted with the strict system rule (D8)."""
 
-    def test_content_is_counted_strictly_by_system(self, git_repo, runtime):
+    def test_content_is_counted_strictly_by_system(
+        self, git_repo, runtime, monkeypatch
+    ):
         root = git_repo(files={"README.md": "# empty\n"})
+        # get_system_content resolves the content root from the environment; the
+        # sibling content-layer tests set it the same way rather than relying on
+        # the process cwd.
+        monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(root))
         _write_definition(root)
         commit_all(root, "edcg: scaffold Test System — system definition")
         _write_custom(
@@ -284,6 +324,41 @@ class TestUnreadableCustomFile:
             "is claimed"
         ) in lines
 
+    def test_a_stale_configured_root_is_named_with_its_path(self, git_repo):
+        """A configured-but-gone root is not the same state as "unconfigured"."""
+        root = git_repo(files={"README.md": "# empty\n"})
+        gone = root / "moved-away"
+        (root / CONFIG_FILENAME).write_text(
+            f'[roots]\nedcopilot = "{gone.as_posix()}"\n', encoding="utf-8"
+        )
+
+        lines = _lines(root, NAME)
+
+        assert (
+            f"[ ] content: EDCoPilot's root is configured but no longer exists "
+            f"({gone}) - run edcg.py doctor (SKILL.md Setup step 4)"
+        ) in lines
+
+    def test_a_non_utf8_custom_file_is_reported_not_crashed(
+        self, git_repo, runtime
+    ):
+        """UnicodeDecodeError is a ValueError: unguarded it turns into exit 1."""
+        root = git_repo(files={"README.md": "# empty\n"})
+        (runtime / CUSTOM_FILE_NAME).write_bytes(
+            "@SystemGreeting<~>Test System\nHello.\n".encode("utf-16")
+        )
+
+        lines = _lines(root, NAME)
+
+        assert (
+            "[ ] content: the custom file cannot be read (not valid UTF-8) - "
+            "run edcg.py doctor (SKILL.md Setup step 4)"
+        ) in lines
+        assert not any(
+            line.startswith("[x] content") or line.startswith("[x] markers")
+            for line in lines
+        )
+
     def test_a_locked_custom_file_is_reported_not_crashed(
         self, git_repo, runtime, monkeypatch
     ):
@@ -375,4 +450,40 @@ class TestRepositoryWideListing:
         assert (
             f"  [ ] {NAME} - definition files are uncommitted; next: run edcg.py "
             "save-definition so the pair lands in git"
+        ) in lines
+
+    def test_a_non_table_system_key_is_unnamed_not_a_crash(self, git_repo):
+        """`system = 5` is valid TOML and names no system."""
+        root = git_repo(files={"README.md": "# empty\n"})
+        (root / "systems").mkdir()
+        (root / "systems" / "odd.md").write_text(DOSSIER, encoding="utf-8")
+        (root / "systems" / "odd.rules.toml").write_text(
+            "system = 5\n", encoding="utf-8"
+        )
+        commit_all(root, "odd rules")
+
+        lines = _lines(root)
+
+        assert (
+            "  [ ] odd - no readable rules file names this system; next: save "
+            "the dossier and rules pair (references/new-system-interview.md "
+            "Phase 5)"
+        ) in lines
+
+    def test_a_non_utf8_rules_file_is_unnamed_not_a_crash(self, git_repo):
+        """The same D9 rule as the custom file, one file over."""
+        root = git_repo(files={"README.md": "# empty\n"})
+        (root / "systems").mkdir()
+        (root / "systems" / "odd.md").write_text(DOSSIER, encoding="utf-8")
+        (root / "systems" / "odd.rules.toml").write_bytes(
+            RULES.encode("utf-16")
+        )
+        commit_all(root, "odd rules")
+
+        lines = _lines(root)
+
+        assert (
+            "  [ ] odd - no readable rules file names this system; next: save "
+            "the dossier and rules pair (references/new-system-interview.md "
+            "Phase 5)"
         ) in lines

@@ -688,9 +688,9 @@ class TestGitRepoCommitFiles:
 
 
 class TestGitRepoLogPaths:
-    """``log_paths`` answers which commits touched one path prefix."""
+    """``log_paths`` answers which commits touched the named exact paths."""
 
-    def test_log_paths_lists_the_commits_that_touched_the_prefix(self, committed_repo):
+    def test_log_paths_lists_the_commits_that_touched_the_paths(self, committed_repo):
         systems = committed_repo.path / "systems"
         systems.mkdir()
         (systems / "test-system.md").write_text("dossier\n", encoding="utf-8")
@@ -701,10 +701,32 @@ class TestGitRepoLogPaths:
         committed_repo.add_all()
         committed_repo.commit("note")
 
-        assert committed_repo.log_paths("systems/test-system") == [definition]
+        assert committed_repo.log_paths("systems/test-system.md") == [definition]
+        # Both halves of the pair are one query.
+        assert committed_repo.log_paths(
+            "systems/test-system.md", "systems/test-system.rules.toml"
+        ) == [definition]
 
-    def test_log_paths_is_empty_when_no_commit_touched_the_prefix(self, committed_repo):
-        assert committed_repo.log_paths("systems/never-written") == []
+    def test_log_paths_never_matches_a_sibling_slug(self, committed_repo):
+        """An exact path is exact: ``sol`` must not ride on ``sol-prime``."""
+        systems = committed_repo.path / "systems"
+        systems.mkdir()
+        (systems / "sol-prime.md").write_text("dossier\n", encoding="utf-8")
+        committed_repo.add_all()
+        committed_repo.commit("the sibling's commit")
+
+        assert (
+            committed_repo.log_paths("systems/sol.md", "systems/sol.rules.toml")
+            == []
+        )
+
+    def test_log_paths_is_empty_when_no_commit_touched_the_paths(self, committed_repo):
+        assert (
+            committed_repo.log_paths(
+                "systems/never-written.md", "systems/never-written.rules.toml"
+            )
+            == []
+        )
 
     def test_log_paths_on_non_repo_is_empty(self, tmp_path):
         plain = tmp_path / "plain"
@@ -713,7 +735,7 @@ class TestGitRepoLogPaths:
         try:
             with warnings.catch_warnings(record=True):
                 warnings.simplefilter("always")
-                assert repo.log_paths("systems/x") == []
+                assert repo.log_paths("systems/x.md") == []
         finally:
             repo.close()
 

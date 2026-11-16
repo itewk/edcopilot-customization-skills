@@ -1249,8 +1249,10 @@ steps (the interview) are worded as invisible rather than inferred. status exits
     )
     start_parser.add_argument("description", nargs="?", help="Branch description")
     start_parser.set_defaults(func=command_branch_start)
-    status_parser = branch_subparsers.add_parser("status", help="Show branch status")
-    status_parser.set_defaults(func=command_branch_status)
+    branch_status_parser = branch_subparsers.add_parser(
+        "status", help="Show branch status"
+    )
+    branch_status_parser.set_defaults(func=command_branch_status)
     review_parser = branch_subparsers.add_parser("review", help="Review branch changes")
     review_parser.set_defaults(func=command_branch_review)
     finalize_parser = branch_subparsers.add_parser(

@@ -172,3 +172,25 @@ def test_a_broken_configuration_is_reported_and_still_exits_zero(tmp_path, capsy
     assert "next: fix the reported path or file, then re-run edcg.py status" in (
         captured.out
     )
+
+
+def test_a_non_utf8_custom_file_is_reported_and_still_exits_zero(
+    monkeypatch, tmp_path, capsys
+):
+    """UnicodeDecodeError is a ValueError, not an OSError: it used to reach _fail."""
+    seed_repo(tmp_path)
+    _house_rules(tmp_path)
+    _write_definition(tmp_path)
+    commit_all(tmp_path, "edcg: scaffold Test System — system definition")
+    runtime = _runtime(monkeypatch, tmp_path)
+    (runtime / CUSTOM_FILE_NAME).write_bytes(
+        "@SystemGreeting<~>Test System\nHello.\n".encode("utf-16")
+    )
+
+    assert cli.main(["status"]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.out.startswith(HEADING)
+    assert "(not valid UTF-8)" in captured.out
+    assert not captured.out.lstrip().startswith("{")
+    assert captured.err == ""
