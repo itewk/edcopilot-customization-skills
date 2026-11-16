@@ -6,4 +6,4 @@ the custom file is separate and intentionally pinned to the old package version
 (see ``edcg.content.custom_file.VERSION``).
 """
 
-__version__ = "1.0.0"
+__version__ = "1.0.0-alpha.2"

@@ -180,7 +180,7 @@ def test_unknown_command_is_a_usage_error():
 def test_version_prints_the_release_version(capsys):
     assert cli.main(["version"]) == 0
     assert capsys.readouterr().out.strip() == __version__
-    assert __version__ == "1.0.0"
+    assert __version__ == "1.0.0-alpha.2"
     # The provenance string written into the custom file stays pinned to the
     # old package version and is deliberately distinct from the release.
     assert VERSION == "0.1.0"

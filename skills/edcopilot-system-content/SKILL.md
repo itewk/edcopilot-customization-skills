@@ -4,7 +4,7 @@ description: Author and update EDCoPilot speech extensions for colonisation syst
 license: GPL-3.0
 compatibility: Requires Windows (EDCoPilot), Python 3.14+, the httpx and GitPython packages, and git
 metadata:
-  version: "1.0.0"
+  version: "1.0.0-alpha.2"
 ---
 
 # EDCoPilot System Content

@@ -77,6 +77,8 @@ Two notes from the final review wave (same branch):
   modified `all.rules.toml` is deliberately left dirty for its own commit),
   `GitRepo.is_untracked`'s docstring matches what it answers, and the
   `all.rules.toml` literal is the single `ALL_RULES` constant.
+- **Release versioning:** semver with `alpha.N` pre-releases until 1.0.0
+  (alpha.1 = the 2026-11-15 UX-fix batch, `8de3a44`; alpha.2 = next-step hints).
 
 **(gate)** The fresh-session rerun is the remaining item before `v1.0.0`. The
 failed run was not salvaged and the content repository was reverted to
