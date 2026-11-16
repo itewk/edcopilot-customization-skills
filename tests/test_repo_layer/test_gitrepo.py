@@ -687,6 +687,37 @@ class TestGitRepoCommitFiles:
         assert committed_repo.commit_files() == ["note.txt"]
 
 
+class TestGitRepoLogPaths:
+    """``log_paths`` answers which commits touched one path prefix."""
+
+    def test_log_paths_lists_the_commits_that_touched_the_prefix(self, committed_repo):
+        systems = committed_repo.path / "systems"
+        systems.mkdir()
+        (systems / "test-system.md").write_text("dossier\n", encoding="utf-8")
+        committed_repo.add_all()
+        committed_repo.commit("definition")
+        definition = _git(committed_repo.path, "rev-parse", "HEAD").strip()
+        (committed_repo.path / "note.txt").write_text("note\n", encoding="utf-8")
+        committed_repo.add_all()
+        committed_repo.commit("note")
+
+        assert committed_repo.log_paths("systems/test-system") == [definition]
+
+    def test_log_paths_is_empty_when_no_commit_touched_the_prefix(self, committed_repo):
+        assert committed_repo.log_paths("systems/never-written") == []
+
+    def test_log_paths_on_non_repo_is_empty(self, tmp_path):
+        plain = tmp_path / "plain"
+        plain.mkdir()
+        repo = GitRepo(plain)
+        try:
+            with warnings.catch_warnings(record=True):
+                warnings.simplefilter("always")
+                assert repo.log_paths("systems/x") == []
+        finally:
+            repo.close()
+
+
 class TestGitRepoCommitsBetween:
     def test_commits_between_lists_only_the_branch_commits(self, committed_repo):
         default = committed_repo.default_branch()

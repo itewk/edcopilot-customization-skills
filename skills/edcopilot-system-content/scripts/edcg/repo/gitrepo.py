@@ -480,6 +480,33 @@ class GitRepo:
         except GitCommandError:
             return False
 
+    def log_paths(self, prefix: str) -> list[str]:
+        """Return the commits that touched ``prefix``, newest first.
+
+        ``prefix`` is a repository-relative path prefix, so ``systems/<slug>``
+        matches the dossier and the rules file together. Git's pathspec matches
+        an exact path or a directory, so the prefix is widened to a wildcard
+        here rather than requiring the caller to know which half exists.
+        Only the hashes are returned: the caller asks whether history holds a
+        commit for that path.
+
+        Args:
+            prefix: Repository-relative path prefix.
+
+        Returns:
+            Full commit hashes, newest first; an empty list for a
+            non-repository or a prefix no commit touched.
+        """
+        repo = self._require_repo("log_paths")
+        if repo is None:
+            return []
+
+        try:
+            output = repo.git.log("--format=%H", "--", f"{prefix}*")
+        except GitCommandError:
+            return []
+        return [line.strip() for line in output.splitlines() if line.strip()]
+
     def commits_between(self, base: str, branch: str) -> list[str]:
         """Return the summaries of commits on ``branch`` that are not on ``base``."""
         repo = self._require_repo("commits_between")

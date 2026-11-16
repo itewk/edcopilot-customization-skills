@@ -44,6 +44,7 @@ from edcg.repo.brief import build_update_scan, system_names, writing_brief_data
 from edcg.repo.dossier import save_definition
 from edcg.repo.gitrepo import GitRepo
 from edcg.repo.logs import check_logs, scope_failures
+from edcg.repo.status import build_status, build_unreadable_status
 from edcg.rules.validation import validate_content, validate_definition
 
 _MAX_STATION_BODIES = 20
@@ -797,6 +798,29 @@ def command_markdb(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# status
+# ---------------------------------------------------------------------------
+
+
+def command_status(args: argparse.Namespace) -> int:
+    """Print the workflow checklist; exit 0 for every repository state (D9).
+
+    The report is prose on stdout, so a caller reads it as an answer rather than
+    a payload. An unreadable configuration is reported as the repository's state
+    instead of a failed check: the caller asked where things stand, and exit 1
+    would read as a stop signal exactly where the human may want to push on.
+    Usage errors keep argparse's exit 2.
+    """
+    try:
+        config = get_config()
+        block = build_status(config, args.system)
+    except ConfigError as exc:
+        block = build_unreadable_status(str(exc))
+    print(block)
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # check-logs
 # ---------------------------------------------------------------------------
 
@@ -952,6 +976,7 @@ def build_parser() -> argparse.ArgumentParser:
         epilog="""Exit codes: 0 success, 1 check failure, 2 usage error.
 
 Major command groups:
+resume: status
 setup: doctor/init
 authoring: gather-facts/validate-definition/save-definition/writing-brief-data/validate-content/write-content/get-content/update-scan/rewrite-tag
 markers: markdb/check-logs
@@ -1187,6 +1212,28 @@ If --since is not provided, it defaults to the mtime of the custom file.
     )
     audit_parser.add_argument("--system", required=True, help="System name")
     audit_parser.set_defaults(func=command_audit)
+
+    status_parser = subparsers.add_parser(
+        "status",
+        help="Print the workflow checklist derived from the repository",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Example:
+  python edcg.py status
+  python edcg.py status --system "Test System"
+
+Without --system, status prints the repository-wide lines and one state line per
+system. With --system, it prints that system's full checklist.
+
+Every line is derived from the repository and files - the config file, systems/,
+the custom file and its UPDATEDB markers, and git history - so conversation-only
+steps (the interview) are worded as invisible rather than inferred. status exits
+0 for every state: a report is not a failed check.
+""",
+    )
+    status_parser.add_argument(
+        "--system", help="Print the full checklist for this system"
+    )
+    status_parser.set_defaults(func=command_status)
 
     branch_parser = subparsers.add_parser(
         "branch", help="Two-repository branch orchestration"

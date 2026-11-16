@@ -92,7 +92,7 @@ a step calls for a restart.
 
 Run every command from the content root as `python <skill-dir>/scripts/edcg.py <subcommand>`. The top-level `--help` lists every command and the exit codes (0 success, 1 check failure, 2 usage error); each stateful command's `--help` carries a worked example of its payload.
 
-1. **Resume.** Run `edcg.py audit --system <name>` (or `edcg.py update-scan` when facts may have moved). Read the repository state: `systems/`, the custom file, `UPDATEDB` markers, git log.
+1. **Resume.** Run `edcg.py status` for the checklist derived from the repository, then `edcg.py audit --system <name>` (or `edcg.py update-scan` when facts may have moved). Read the repository state: `systems/`, the custom file, `UPDATEDB` markers, git log.
 2. **Gather facts.** New: `edcg.py gather-facts --system <name>`. When Raven
    has no entry, skip gathering and start the interview from the user's
    description. Update: `edcg.py update-scan` and read this system's delta
