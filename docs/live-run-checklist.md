@@ -71,6 +71,18 @@ replaced it: this rerun.
 
 Ask one phase at a time and wait for the answers. Do not merge phases.
 
+- [ ] Run `edcg.py status --system <name>` now (after `init`) and again after
+      each gate in §C and §D.
+      - [ ] Each run prints one prose checklist: the repository and house rules,
+            the definition pair and the commits that touch it, the authored tags
+            and their `UPDATEDB` markers.
+      - [ ] Every unchecked line states the state and, where one exists, names
+            the step that clears it; `status` exits 0 in every state, so the
+            report is read as an answer, never obeyed as a stop.
+      - [ ] Before the save the definition line is unchecked (none, incomplete,
+            or files without a commit); the interview is conversation and
+            invisible here, so an unchecked line means the save has not run, not
+            that the interview was skipped.
 - [ ] Run `edcg.py gather-facts --system <name>`, or start without a name when
       the source has no entry yet.
 - [ ] **Phase 1 — high-level concept.** The system's identity and theme are
@@ -112,6 +124,19 @@ Ask one phase at a time and wait for the answers. Do not merge phases.
             were deleted once the save returned; `git status` in the content
             repository is clean afterwards.
 
+From here on, `writing-brief-data`, `validate-content`, `write-content`,
+`rewrite-tag` and `markdb` refuse without a saved definition, and the refusal
+names what will not work: no bounds, voices or tag lines, so content is written
+blind and EDCoPilot coverage cannot be verified. The human may choose to skip
+the prerequisite by re-running with `--allow-no-definition`: the command then
+proceeds and prints a `warning:` block on stderr that restates that cost.
+Nothing is stored — the transcript is the record, so a skip is never silent.
+
+- [ ] When a content command is refused, read all three parts back to the user
+      before any re-run: the missing step, the cost, and the flag.
+- [ ] A skip is only made on the human's instruction; the `warning:` block stays
+      in the transcript as the record of it.
+
 ## C. Write and stage the content
 
 EDCoPilot must be closed before anything writes the custom file or changes
@@ -141,6 +166,9 @@ only when it is a repository.
       - [ ] One commit in the runtime repository, subject
             `edcg: markdb add <n> tag(s)`.
       - [ ] Every named tag now carries `UPDATEDB`.
+- [ ] Run `edcg.py status --system <name>` before the restart.
+      - [ ] The marker line reports every authored tag marked for update; a tag
+            it still counts as unmarked is a marker the cycle has not staged.
 - [ ] Ask the user to start EDCoPilot again, and confirm the restart before
       reading logs.
       - [ ] EDCoPilot was restarted with the markers in place.
@@ -191,6 +219,9 @@ only when it is a repository.
       - [ ] One commit, subject `edcg: update <system> — <summary>` (em dash).
       - [ ] `git show --stat HEAD` names the dossier and rules files only; a
             staging file left in the content root stays untracked.
+- [ ] Run `edcg.py status --system <name>` once the save returns.
+      - [ ] The definition line reads committed; the updated pair is what the
+            content steps read next.
 - [ ] Run `edcg.py writing-brief-data` and `edcg.py get-content` again, then
       revise with `edcg.py rewrite-tag` and `edcg.py write-content`.
       - [ ] EDCoPilot was closed before the first rewrite.
@@ -206,6 +237,9 @@ only when it is a repository.
             not and says so.
       - [ ] `git log` at the runtime root shows the content, marker-add and
             marker-remove commits for this update.
+- [ ] Run `edcg.py status --system <name>` at the end of the cycle.
+      - [ ] The marker line reports what the cycle left behind, so a marker that
+            did not land is visible instead of assumed.
 
 ## E. Sign-off
 

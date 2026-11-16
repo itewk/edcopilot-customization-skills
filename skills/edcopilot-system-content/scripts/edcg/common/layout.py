@@ -63,9 +63,11 @@ def rules_path(config: Config, system_name: str) -> Path:
 def has_definition(config: Config, system_name: str) -> bool:
     """Whether the system's definition - the dossier AND rules pair - is saved.
 
-    The one home for the rule ``save_definition`` decides ``is_new`` by, that
-    ``status`` reports, and that the content commands refuse without: half a
-    pair is not a definition.
+    The shared definition semantics for the content commands' gate, ``status``
+    and the next-step hints: half a pair is not a definition. The
+    ``save_definition`` ``is_new`` check still uses ``.exists()`` on the same
+    pair, so a directory at either path counts as present there and absent
+    here; adopting this predicate is a deferred follow-up.
     """
     return (
         dossier_path(config, system_name).is_file()

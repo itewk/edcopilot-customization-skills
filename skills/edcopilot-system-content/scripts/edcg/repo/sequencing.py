@@ -13,8 +13,10 @@ a command cannot drift from its siblings.
 
 Three rulings shape the module:
 
-* A definition is the dossier AND rules pair, the same rule ``is_new`` and
-  ``status`` use. Half a pair is no definition.
+* A definition is the dossier AND rules pair, the shared predicate ``status``
+  and the content commands' gate use. Half a pair is no definition;
+  ``save_definition``'s ``is_new`` still checks ``.exists()`` and is a deferred
+  follow-up to adopt it.
 * The override is per command and changes nothing on disk. The warning goes to
   stderr, next to the answer rather than inside it, and the transcript is the
   record (G3).

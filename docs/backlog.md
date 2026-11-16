@@ -79,13 +79,43 @@ Two notes from the final review wave (same branch):
   `all.rules.toml` literal is the single `ALL_RULES` constant.
 
 Release versioning is semver with `alpha.N` pre-releases until 1.0.0
-(alpha.1 = the 2026-11-15 UX-fix batch, `8de3a44`; alpha.2 = next-step hints).
+(alpha.1 = the 2026-11-15 UX-fix batch, `8de3a44`; alpha.2 = next-step hints;
+alpha.3 = status, sequencing and the provenance-version alignment).
 
 **(gate)** The fresh-session rerun is the remaining item before `v1.0.0`. The
 failed run was not salvaged and the content repository was reverted to
 `219b17f`, so the live-run gate is a complete `docs/live-run-checklist.md` pass
 on a freshly bootstrapped repository, exercising `init --co-author`, the file
 flags and the aggregated error message end to end.
+
+### Workflow status and sequencing (2026-11-15) — shipped, same gate
+
+The second answer to the same failure, on the same branch (design
+`docs/superpowers/specs/2026-11-15-status-sequencing-design.md`, plan
+`docs/superpowers/plans/2026-11-15-status-sequencing.md`):
+
+- `edcg.py status [--system <name>]` prints the workflow checklist derived from
+  the repository and files only — the config, `systems/`, the custom file and
+  its `UPDATEDB` markers, and git history — as prose on stdout, exit 0 in every
+  state, so a report is never read as a stop signal.
+- `writing-brief-data`, `validate-content`, `write-content`, `rewrite-tag` and
+  `markdb` (add and remove) refuse with exit 1 when the dossier and rules pair
+  is missing; the refusal names the missing step, the cost and the override, and
+  `--allow-no-definition` lets a human-directed skip proceed with the same cost
+  restated as a `warning:` block on stderr.
+- `layout.has_definition` single-homes the definition predicate for the gate,
+  `status` and the next-step hints. `save_definition`'s `is_new` still checks
+  `.exists()` on the same pair; adopting the predicate there is a deferred
+  follow-up (they can differ only where a directory sits at one of the paths).
+- Every version string — `SKILL.md` metadata, `edcg.__version__` and the
+  provenance `VERSION` — reads `1.0.0-alpha.3`.
+
+Provenance markers written from `1.0.0-alpha.3` onward carry that release
+version; markers from earlier builds carry `0.1.0` and still validate, because
+`PROVENANCE_RE` matches the comment format, not the version. A rewritten block
+therefore moves the marker's version field by design, not by tampering. The
+live-run checklist runs `edcg.py status` after `init` and after each gate, and
+records the refusal-and-skip rule before the content steps.
 
 ## After 1.0 — features and improvements
 
