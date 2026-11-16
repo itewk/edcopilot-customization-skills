@@ -1,0 +1,6 @@
+[allowlist]
+    regexes = [
+        # ignore fake test API keys
+        '''inara-key-123''',
+        '''deepl-key-456',
+    ]
