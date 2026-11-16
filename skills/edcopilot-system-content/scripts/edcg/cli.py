@@ -80,11 +80,14 @@ def _json_default(value: Any) -> Any:
 
 
 def _emit_next_hint(message: str) -> None:
-    """Print the workflow's next step to stderr, the channel doctor uses.
+    """Print the workflow's next step to stderr, in doctor's prose form.
 
-    Hints are advice, never part of the data answer: they ride on stderr after
-    the JSON so a caller parsing stdout sees a byte-identical payload, and a
-    caller reading the terminal is told which reference file carries the flow.
+    The stderr prose precedent is markdb's ``warning:`` block and the
+    ``UsageError`` handler in ``main``: advice and diagnosis never share a
+    channel with the data answer. Doctor writes its ``fix:`` hints on stdout;
+    these follow doctor's terse label-plus-sentence form, but on stderr, so a
+    caller parsing stdout still sees a byte-identical payload while a caller
+    reading the terminal is told which reference file carries the flow next.
     """
     print(f"next: {message}", file=sys.stderr)
 
@@ -629,9 +632,15 @@ def command_audit(args: argparse.Namespace) -> int:
     facts = asyncio.run(gather_facts(args.system, config))
     report = build_audit_report(facts, config)
     _emit(asdict(report))
-    # The dossier is the definition file the interview flows read, so its
-    # presence in systems/ is what decides new system versus update.
-    if layout.dossier_path(config, facts.system_name).is_file():
+    # A definition is the dossier AND rules pair: save_definition calls a
+    # system new unless both exist, and writing_brief_data refuses unless both
+    # exist. A half-written pair therefore gets the new-system pointer, which
+    # stays correct because save-definition would report a scaffold.
+    has_definition = (
+        layout.dossier_path(config, facts.system_name).is_file()
+        and layout.rules_path(config, facts.system_name).is_file()
+    )
+    if has_definition:
         _emit_next_hint(
             "this system has a definition - read references/update-interview.md "
             "and run the seven phases"

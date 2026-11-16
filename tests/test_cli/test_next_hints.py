@@ -1,8 +1,10 @@
 """Tests for the ``next:`` hints printed after each command's JSON.
 
-Hints are stderr prose on the channel doctor already uses for ``fix:`` lines,
-so stdout stays the parseable data answer. The hint texts are pinned literally
-because each one names the reference file the workflow has to read next.
+Hints use doctor's terse label-plus-sentence form on stderr, the channel
+markdb's ``warning:`` block and the ``UsageError`` handler already use - advice
+and diagnosis never share a channel with the data answer - so stdout stays the
+parseable payload. The hint texts are pinned literally because each one names
+the reference file the workflow has to read next.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ import pytest
 from edcg import cli
 from edcg.facts.facts import LandableStation, SystemFacts
 from edcg.facts.raven import RavenSystem
+from facts_builders import raven_site, raven_system, spansh_station, spansh_system
 
 # Every key the gather-facts payload carried before hints existed.
 FACTS_KEYS = {
@@ -89,6 +92,17 @@ def test_init_success_prints_the_house_rules_hint(capsys):
     data = json.loads(captured.out)
     assert set(data) == {"content_root", "state", "created", "git"}
     assert data["state"] == "blank"
+
+
+def test_failed_init_prints_no_hint(tmp_path, capsys):
+    """The setup hint is for a scaffold that happened, never for a refusal."""
+    (Path(tmp_path) / cli.CONFIG_FILENAME).write_text("", encoding="utf-8")
+
+    assert cli.main(["init", "--no-git"]) == 1
+
+    captured = capsys.readouterr()
+    assert "next:" not in captured.err
+    assert "already a content repository" in json.loads(captured.out)["error"]
 
 
 def test_gather_facts_with_a_raven_entry_prints_the_interview_with_facts_hint(
@@ -168,3 +182,56 @@ def test_audit_without_a_definition_prints_the_new_system_interview_hint(
     data = json.loads(captured.out)
     assert set(data) == AUDIT_KEYS
     assert data["system_name"] == "Test System"
+
+
+def test_audit_with_only_a_dossier_prints_the_new_system_hint(
+    monkeypatch, tmp_path, capsys
+):
+    """A definition is the dossier AND rules pair, not the dossier alone.
+
+    ``save_definition`` calls a system new unless both files exist, and
+    ``writing_brief_data`` refuses unless both exist, so a dossier without its
+    rules file is still a new system: the six-phase pointer is the correct one.
+    """
+    systems = Path(tmp_path) / "systems"
+    systems.mkdir()
+    (systems / "test-system.md").write_text(
+        "# Test System — system dossier\n", encoding="utf-8"
+    )
+    _patch_gather(monkeypatch, SystemFacts(system_name="Test System"))
+
+    assert cli.main(["audit", "--system", "Test System"]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.err == (
+        "next: this system has no definition - read "
+        "references/new-system-interview.md and run the six phases\n"
+    )
+    data = json.loads(captured.out)
+    assert set(data) == AUDIT_KEYS
+
+
+def test_failing_audit_still_prints_its_hint(monkeypatch, capsys):
+    """A failing audit is still an audit: the flow pointer follows the JSON."""
+    station = spansh_station(large_pads=0, medium_pads=0, small_pads=0)
+    facts = SystemFacts(
+        system_name="Test System",
+        raven_system=raven_system(revision=7),
+        raven_sites=[raven_site()],
+        spansh_system=spansh_system([station]),
+        spansh_stations=[station],
+    )
+    _patch_gather(monkeypatch, facts)
+
+    assert cli.main(["audit", "--system", "Test System"]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.err == (
+        "next: this system has no definition - read "
+        "references/new-system-interview.md and run the six phases\n"
+    )
+    data = json.loads(captured.out)
+    assert set(data) == AUDIT_KEYS
+    assert data["passed"] is False
+    assert data["counts"]["error"] == 1
+

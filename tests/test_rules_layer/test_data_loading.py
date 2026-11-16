@@ -14,12 +14,17 @@ def test_rule_data_lives_in_package():
 
 def test_no_script_references_assets():
     # assets/ is agent-facing only: no script may load rule data or templates
-    # from it. The single permitted mention is the init command's next-step
-    # hint, which is prose telling the agent to copy the example rules file -
-    # not a path this package reads.
+    # from it. The single permitted mention lives in cli.py - the init command's
+    # next-step hint, which is prose telling the agent to copy the example rules
+    # file, not a path this package reads. It must appear exactly once there and
+    # nowhere else.
     permitted = "assets/all.rules.toml.example"
+    cli_py = SCRIPTS / "edcg" / "cli.py"
+    assert cli_py.read_text(encoding="utf-8").count(permitted) == 1
     for py in SCRIPTS.rglob("*.py"):
-        text = py.read_text(encoding="utf-8").replace(permitted, "")
+        text = py.read_text(encoding="utf-8")
+        if py == cli_py:
+            text = text.replace(permitted, "")
         assert "assets" not in text, py
 
 def test_loader_is_module_relative():
