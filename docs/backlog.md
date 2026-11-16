@@ -160,8 +160,12 @@ flags and the aggregated error message end to end.
 - Advisory gates; no state file; no MCP server; no build step (founding spec).
 - Content root = CWD with env override; blank-directory bootstrap requires
   user confirmation; EDCoPilot root precedence env → config file → ask.
-- Provenance format (including the historical package identifier and version
-  `0.1.0`) is byte-parity-pinned; em dashes in commit subjects.
+- Provenance format is byte-parity-pinned (comment shape and the historical
+  package identifier); em dashes in commit subjects.
+  Superseded decision (2026-11-15): the provenance version byte-pin to the old
+  implementation's `0.1.0` — the human ruled all version strings align on semver
+  pre-releases; provenance blocks from this version onward carry the release
+  version (`1.0.0-alpha.3`). `PROVENANCE_RE` format unchanged.
 - Wire-protocol strings and the config filename are data, exempt from product
   identity rules.
 - `add_all()` in the runtime (content and marker) commits is old-behavior parity;

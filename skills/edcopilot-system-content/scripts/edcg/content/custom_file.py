@@ -23,7 +23,7 @@ COMMIT_PREFIX = "edcg"
 __all__ = ["CUSTOM_FILE_NAME", "PROVENANCE_RE", "WriteResult", "write_content"]
 
 #: Provenance triple's first field: the generator version.
-VERSION = "0.1.0"
+VERSION = "1.0.0-alpha.3"
 
 
 @dataclass(frozen=True)

@@ -394,7 +394,7 @@ class TestFrontmatter:
         from edcg import __version__
 
         data, _ = _body()
-        assert data["metadata"]["version"] == "1.0.0-alpha.2"
+        assert data["metadata"]["version"] == "1.0.0-alpha.3"
         assert data["metadata"]["version"] == __version__
 
 

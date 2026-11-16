@@ -19,7 +19,7 @@ from support import run_git
 
 EXISTING_CUSTOM_CONTENT = (
     "# EDCoPilot Speech Extensions\n\n"
-    "<!-- provenance: edcopilot_customization_generator 0.1.0 — TestModel — 2024-01-01T00:00:00 -->\n\n"
+    "<!-- provenance: edcopilot_customization_generator 1.0.0-alpha.3 — TestModel — 2024-01-01T00:00:00 -->\n\n"
     "@ExistingTag <~> Existing System\n"
     "[<Voice>] Existing content.\n"
 )
@@ -159,7 +159,7 @@ class TestWriteContentTool:
         # The last one should be for our new content
         last_provenance = provenance_matches[-1]
         assert "edcopilot_customization_generator" in last_provenance
-        assert "0.1.0" in last_provenance  # version from the packaged generator
+        assert "1.0.0-alpha.3" in last_provenance  # version from the packaged generator
 
     def test_write_content_uses_crlf_line_endings(self, mock_config):
         """Test that write_content uses CRLF line endings."""
