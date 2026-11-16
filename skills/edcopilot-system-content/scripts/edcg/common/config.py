@@ -218,6 +218,15 @@ def _read_config_data(config_file: Path) -> dict:
             return tomllib.load(f)
     except tomllib.TOMLDecodeError as exc:
         raise ConfigError(f"Cannot parse config file {config_file}: {exc}") from exc
+    except UnicodeDecodeError as exc:
+        # tomllib decodes as UTF-8, so a file saved in another encoding raises
+        # UnicodeDecodeError - a ValueError, which no caller's ConfigError
+        # handling would catch. It is the same class of fault as malformed TOML:
+        # the file cannot be read, and a reader such as `edcg status` reports it.
+        raise ConfigError(
+            f"Cannot parse config file {config_file}: not valid UTF-8 "
+            f"(byte {exc.start})"
+        ) from exc
     except OSError as exc:
         raise ConfigError(f"Cannot read config file {config_file}: {exc}") from exc
 

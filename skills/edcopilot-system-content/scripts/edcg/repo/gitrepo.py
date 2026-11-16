@@ -483,11 +483,11 @@ class GitRepo:
     def log_paths(self, *paths: str) -> list[str]:
         """Return the commits that touched any of ``paths``, newest first.
 
-        Each entry is a repository-relative exact path. Exact paths, not
-        wildcards: a prefix glob would make ``systems/sol`` match
-        ``systems/sol-prime.md`` and report a sibling system's commit as this
-        one's. Git's pathspec already matches exact files, including a path
-        that a commit added and a later commit deleted.
+        Each entry is a repository-relative exact path. ``:(literal)`` disables
+        git's pathspec magic, so a slug that happens to contain a glob character
+        can never match another system's files - and the prefix matching that
+        would let ``systems/sol`` match ``systems/sol-prime.md`` is not in play
+        either.
 
         Args:
             paths: Repository-relative paths (one or more).
@@ -501,7 +501,9 @@ class GitRepo:
             return []
 
         try:
-            output = repo.git.log("--format=%H", "--", *paths)
+            output = repo.git.log(
+                "--format=%H", "--", *(f":(literal){path}" for path in paths)
+            )
         except GitCommandError:
             return []
         return [line.strip() for line in output.splitlines() if line.strip()]

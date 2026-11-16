@@ -194,3 +194,48 @@ def test_a_non_utf8_custom_file_is_reported_and_still_exits_zero(
     assert "(not valid UTF-8)" in captured.out
     assert not captured.out.lstrip().startswith("{")
     assert captured.err == ""
+
+
+def test_a_non_utf8_configuration_is_reported_and_still_exits_zero(
+    tmp_path, capsys
+):
+    """tomllib decodes as UTF-8: a mid-file Unicode error used to reach _fail."""
+    (tmp_path / CONFIG_FILENAME).write_bytes(
+        "[roots]\nedcopilot = 5\n".encode("utf-16")
+    )
+
+    assert cli.main(["status"]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.out.startswith(HEADING)
+    assert (
+        "[ ] repository: cannot read the repository: Cannot parse config file"
+        in captured.out
+    )
+    assert "not valid UTF-8" in captured.out
+    assert not captured.out.lstrip().startswith("{")
+    assert captured.err == ""
+
+
+def test_a_non_utf8_rules_file_is_reported_and_still_exits_zero(
+    monkeypatch, tmp_path, capsys
+):
+    """The decode guard's exit-0 contract, pinned at the command surface."""
+    seed_repo(tmp_path)
+    _house_rules(tmp_path)
+    (tmp_path / "systems" / "odd.md").write_text(DOSSIER, encoding="utf-8")
+    (tmp_path / "systems" / "odd.rules.toml").write_bytes(
+        RULES.encode("utf-16")
+    )
+    commit_all(tmp_path, "odd rules")
+
+    assert cli.main(["status"]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.out.startswith(HEADING)
+    assert (
+        "  [ ] odd - no readable rules file names this system; next:"
+        in captured.out
+    )
+    assert not captured.out.lstrip().startswith("{")
+    assert captured.err == ""

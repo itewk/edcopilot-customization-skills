@@ -382,3 +382,26 @@ class TestEdcopilotRootRemoval:
         assert not hasattr(config, "edcopilot_root"), (
             "Config should no longer have an edcopilot_root field after removal"
         )
+
+
+class TestUnreadableConfigFile:
+    """A config file that cannot be decoded is a reportable ConfigError.
+
+    ``tomllib.load`` decodes as UTF-8, so a file saved in another encoding
+    raises ``UnicodeDecodeError`` - a ``ValueError``, which no caller's
+    ``ConfigError`` handling would catch. It must surface as ``ConfigError`` so
+    a reader (``edcg status``) can report it instead of failing a check.
+    """
+
+    def test_a_non_utf8_config_file_is_a_config_error(self, tmp_path):
+        from edcg.common.config import CONFIG_FILENAME
+
+        config_file = tmp_path / CONFIG_FILENAME
+        config_file.write_bytes("[roots]\nedcopilot = 5\n".encode("utf-16"))
+
+        with pytest.raises(ConfigError) as caught:
+            resolve_edcopilot_root(tmp_path, {})
+
+        message = str(caught.value)
+        assert str(config_file) in message
+        assert "not valid UTF-8" in message

@@ -720,6 +720,16 @@ class TestGitRepoLogPaths:
             == []
         )
 
+    def test_log_paths_treats_a_pathspec_metacharacter_literally(self, committed_repo):
+        """The ``:(literal)`` magic keeps a glob in a slug from matching others."""
+        systems = committed_repo.path / "systems"
+        systems.mkdir()
+        (systems / "sol.md").write_text("dossier\n", encoding="utf-8")
+        committed_repo.add_all()
+        committed_repo.commit("sol")
+
+        assert committed_repo.log_paths("systems/sol*.md") == []
+
     def test_log_paths_is_empty_when_no_commit_touched_the_paths(self, committed_repo):
         assert (
             committed_repo.log_paths(
