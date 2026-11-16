@@ -91,6 +91,29 @@ transcript, and never silent.
 - **D4 — `status` derives from repo + files only** (this conversation).
 - **D5 — Provenance version joins the alignment** (human instruction,
   superseding the byte-pin; recorded in the backlog).
+- **D6 — markdb refusal rule** (builder check): a markdb call refuses when
+  ANY tag's derivable system (field 1 of the tag, where the kind declares a
+  system part) lacks a definition; tags whose kind declares no system part
+  are exempt (systemless markers must never be stranded). The interface does
+  NOT grow a system field — `PAYLOAD_SPECS`, `DOCUMENTED_KEYS` and the markdb
+  epilogs stay untouched; the override covers the mixed/legacy edge.
+- **D7 — status signature** (builder check): `edcg status [ --system <name> ]`.
+  Without the flag: repo-wide lines (config, house rules) plus one one-line
+  state per system. With it: the full checklist for that system.
+- **D8 — status content line is precise** (builder check): content presence
+  is derived with the strict rule (`tag.system == system_name` only), NOT via
+  `get_system_content`'s station-decl fallback — an approximate line would
+  violate the "checklist that lies" anti-goal. `get_system_content` itself is
+  unchanged (runtime behaviour untouched; the divergence is commented in
+  status's implementation).
+- **D9 — status exits 0 always** (builder check): a status report is not a
+  failed check; exit 1 would read as a stop signal on exactly the states the
+  human wants pushed through with an override. Usage errors (exit 2) still
+  apply.
+- **D10 — Sequencing** (builder check): the alpha.3 plan assumes the alpha.2
+  batch (next-step hints, version bump) has landed first; the provenance
+  alignment from D5 lands on top of alpha.2 before this feature's tasks
+  start.
 
 ## What's left to the builder
 
