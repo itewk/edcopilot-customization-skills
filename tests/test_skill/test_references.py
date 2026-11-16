@@ -641,7 +641,7 @@ class TestWorkflowDetails:
         assert "one marker per tag block" in lowered
         assert "rewrite-tag" in lowered
         assert "does not commit" in lowered or "owns the content commit" in lowered
-        assert "byte-compatibility" in lowered
+        assert "keeps their markers parsing" in lowered
         assert "not the skill version" in lowered
 
 

@@ -208,11 +208,12 @@ a branch the user did not ask for.
 - A provenance comment marks the start of authored content, one marker per tag block. Validation reads from the last provenance marker, and the rewrite path
   collapses intermediate markers before validating so an edit is still checked
   against every authored block. The comment keeps the historical package
-  identifier, deliberately, to preserve byte-compatibility with previously
-  written content; that identifier is not the skill version. The version field
-  carries the skill release version from `1.0.0-alpha.3` onward; markers from
-  earlier builds carry `0.1.0` and remain valid, because `PROVENANCE_RE` matches
-  the comment format, not the version (2026-11-15 ruling).
+  identifier, deliberately, because that identifier is part of the marker
+  format earlier builds wrote and is what keeps their markers parsing; it is
+  not the skill version. The version field carries the skill release version
+  from `1.0.0-alpha.3` onward; markers from earlier builds carry `0.1.0` and
+  remain valid, because `PROVENANCE_RE` matches the comment format, not the
+  version (2026-11-15 ruling).
 
 ## Stop and ask the human
 

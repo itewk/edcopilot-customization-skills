@@ -5,11 +5,13 @@ the config is supplied through the environment (the content layer resolves
 roots lazily per call). No gate/pause case existed in the old suite.
 """
 
+import re
 import subprocess
 
 import pytest
 
-from edcg.content.custom_file import write_content
+from edcg.content.custom_file import VERSION, write_content
+from edcg.content.rewrite import get_system_content, rewrite_tag
 from support import run_git
 
 
@@ -22,6 +24,14 @@ EXISTING_CUSTOM_CONTENT = (
     "<!-- provenance: edcopilot_customization_generator 1.0.0-alpha.3 — TestModel — 2024-01-01T00:00:00 -->\n\n"
     "@ExistingTag <~> Existing System\n"
     "[<Voice>] Existing content.\n"
+)
+
+# The superseded provenance byte-pin: markers written before 1.0.0-alpha.3 carry
+# 0.1.0 and must keep parsing, because PROVENANCE_RE matches the comment's
+# format, not its version.
+LEGACY_PROVENANCE = (
+    "<!-- provenance: edcopilot_customization_generator 0.1.0 "
+    "— LegacyModel — 2024-01-01T00:00:00 -->"
 )
 
 SAMPLE_CONTENT_BLOCK = """@SystemGreeting<~>Test System
@@ -429,3 +439,57 @@ class TestWriteContentTool:
         # Should include the model name
         assert "TestModel-1.0" in last_provenance
 
+    def test_a_legacy_provenance_block_still_parses(self, mock_config, monkeypatch):
+        """A 0.1.0 marker predates the alignment; the reader matches format."""
+        monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(mock_config))
+        custom_file = mock_config / "EDCoPilot.SpeechExtensions.Custom.txt"
+        custom_file.write_text(
+            "# EDCoPilot Speech Extensions\n\n"
+            f"{LEGACY_PROVENANCE}\n\n"
+            "@SystemGreeting<~>Existing System\n"
+            "[<Voice>] Legacy line.\n",
+            encoding="utf-8",
+            newline="\r\n",
+        )
+
+        content = get_system_content("Existing System")
+
+        assert [tag["tag"] for tag in content["tags"]] == [
+            "@SystemGreeting<~>Existing System"
+        ]
+        assert content["tags"][0]["lines"] == ["[<Voice>] Legacy line."]
+
+    def test_a_legacy_block_rewrites_and_the_new_marker_is_the_release_version(
+        self, mock_config, monkeypatch
+    ):
+        """The mixed file every upgraded repository starts with."""
+        monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(mock_config))
+        custom_file = mock_config / "EDCoPilot.SpeechExtensions.Custom.txt"
+        custom_file.write_text(
+            "# EDCoPilot Speech Extensions\n\n"
+            f"{LEGACY_PROVENANCE}\n\n"
+            "@SystemGreeting<~>Test System\n"
+            "[<Voice>] Hello there.\n",
+            encoding="utf-8",
+            newline="\r\n",
+        )
+        run_git(mock_config, "add", "-A")
+        run_git(mock_config, "commit", "-m", "legacy content")
+
+        rewritten = rewrite_tag(
+            system_name="Test System",
+            tag="@SystemGreeting<~>Test System",
+            replace={"[<Voice>] Hello there.": "[<Voice>] Hi there."},
+        )
+        write_content(
+            system_name="Test System",
+            content_block="@SystemBroadcast<~>Test System\n[<Voice>] Welcome.\n",
+        )
+
+        assert rewritten["replaced"] == 1
+        content = custom_file.read_text(encoding="utf-8")
+        assert "[<Voice>] Hi there." in content
+        markers = re.findall(r"<!-- provenance:[^>]*-->", content)
+        assert len(markers) == 2
+        assert "0.1.0" in markers[0]  # the legacy marker is carried forward
+        assert VERSION in markers[-1]  # the appended block carries the release

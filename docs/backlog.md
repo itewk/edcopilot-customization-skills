@@ -102,7 +102,9 @@ The second answer to the same failure, on the same branch (design
   `markdb` (add and remove) refuse with exit 1 when the dossier and rules pair
   is missing; the refusal names the missing step, the cost and the override, and
   `--allow-no-definition` lets a human-directed skip proceed with the same cost
-  restated as a `warning:` block on stderr.
+  restated as a `warning:` block on stderr. `markdb` reads the system from each
+  tag line, so a kind that declares no system part is exempt: a systemless
+  marker is never stranded.
 - `layout.has_definition` single-homes the definition predicate for the gate,
   `status` and the next-step hints. `save_definition`'s `is_new` still checks
   `.exists()` on the same pair; adopting the predicate there is a deferred

@@ -1127,7 +1127,13 @@ from the payload or from its file flag, never both.""",
     save_parser.set_defaults(func=command_save_definition)
 
     brief_parser = subparsers.add_parser(
-        "writing-brief-data", help="Computed writing-brief data as JSON"
+        "writing-brief-data",
+        help="Computed writing-brief data as JSON",
+        description=(
+            "The brief is computed from the dossier and rules pair, so "
+            "--allow-no-definition cannot substitute for a definition: the "
+            "flag only lifts the gate and records the human's skip."
+        ),
     )
     brief_parser.add_argument("--system", required=True, help="System name")
     brief_parser.add_argument(

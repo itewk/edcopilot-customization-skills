@@ -6,9 +6,10 @@ saved definition each refuses with exit 1 and the three-part message, before it
 writes anything. ``--allow-no-definition`` lifts the gate, and the skip is made
 audible by a ``warning:`` block on stderr: the transcript is the record.
 
-``markdb`` has no system field, so its systems are derived from the tag lines
-(field 1, where the kind declares a system part - D6). A systemless tag is
-exempt: a marker must never be stranded.
+``markdb`` has no system field, so its systems come from the tag lines: the
+field the kind's ``parts`` declares as the system (index 0 for every shipped
+kind today; a test drives a reordered kind). A systemless tag is exempt: a
+marker must never be stranded.
 """
 
 from __future__ import annotations

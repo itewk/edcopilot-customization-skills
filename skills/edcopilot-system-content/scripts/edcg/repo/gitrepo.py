@@ -483,11 +483,11 @@ class GitRepo:
     def log_paths(self, *paths: str) -> list[str]:
         """Return the commits that touched any of ``paths``, newest first.
 
-        Each entry is a repository-relative exact path. ``:(literal)`` disables
-        git's pathspec magic, so a slug that happens to contain a glob character
-        can never match another system's files - and the prefix matching that
-        would let ``systems/sol`` match ``systems/sol-prime.md`` is not in play
-        either.
+        Each path is looked up exactly: ``:(literal)`` disables git's pathspec
+        magic, so the prefix matching that would let ``systems/sol`` match
+        ``systems/sol-prime.md`` is not in play. This is belt-and-braces -
+        slugs cannot contain glob magic today (``slugify`` strips to
+        ``[a-z0-9-]``) - and keeps the lookup exact if that ever changes.
 
         Args:
             paths: Repository-relative paths (one or more).

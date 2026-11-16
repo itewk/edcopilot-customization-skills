@@ -162,6 +162,13 @@ tags and their counts, the custom file for `UPDATEDB` markers, and `systems/`
 for the dossier and rules files. Read them together so the user can see where
 the cycle is.
 
+The definition prerequisite is a refusal, not a gate: when a content command
+refuses, show the human all three parts — the missing step, the cost of
+skipping, and the flag — and wait. Only the human may authorise the skip;
+`edcg.py write-content` accepts `--allow-no-definition`, and the flag is per
+command, so every gated call for a skipped system needs it again. It cannot help
+`writing-brief-data`, whose brief is computed from the definition itself.
+
 ## Commit conventions
 
 The scripts commit for you, with the co-author trailer you pass as
