@@ -643,15 +643,11 @@ def command_audit(args: argparse.Namespace) -> int:
     facts = asyncio.run(gather_facts(args.system, config))
     report = build_audit_report(facts, config)
     _emit(asdict(report))
-    # A definition is the dossier AND rules pair: save_definition calls a
-    # system new unless both exist, and writing_brief_data refuses unless both
-    # exist. A half-written pair therefore gets the new-system pointer, which
-    # stays correct because save-definition would report a scaffold.
-    has_definition = (
-        layout.dossier_path(config, facts.system_name).is_file()
-        and layout.rules_path(config, facts.system_name).is_file()
-    )
-    if has_definition:
+    # A definition is the dossier AND rules pair: one shared rule in layout, so
+    # this hint cannot drift from save-definition's is_new decision or the
+    # content commands' gate. A half-written pair gets the new-system pointer,
+    # which stays correct because save-definition would report a scaffold.
+    if layout.has_definition(config, facts.system_name):
         _emit_next_hint(
             "this system has a definition - read references/update-interview.md "
             "and run the seven phases"

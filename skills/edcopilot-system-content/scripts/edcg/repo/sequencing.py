@@ -29,7 +29,7 @@ import sys
 from typing import Iterable, Mapping
 
 from edcg.common.config import Config
-from edcg.common.layout import dossier_path, rules_path
+from edcg.common.layout import dossier_path, has_definition, rules_path
 from edcg.rules.validation import (
     RULE_DATA_DIR,
     TAG_RE,
@@ -58,19 +58,6 @@ class DefinitionMissingError(ValueError):
     with ``{"error": ...}`` on stdout, exactly like every other refused check,
     and never a traceback.
     """
-
-
-def has_definition(config: Config, system_name: str) -> bool:
-    """Whether the system's definition is saved.
-
-    The definition is the dossier AND rules pair: the rule ``is_new`` applies
-    when it decides whether to scaffold, and the rule ``status`` reports. One
-    file alone is not a definition.
-    """
-    return (
-        dossier_path(config, system_name).is_file()
-        and rules_path(config, system_name).is_file()
-    )
 
 
 def refusal_message(system_name: str) -> str:
@@ -174,6 +161,8 @@ def tag_systems(
         if declaration is None or "system" not in declaration.parts:
             continue
         rest = match.group("rest")
+        # parse_content drops empty fields, so a blank system field shifts the
+        # index; identical to the parser by design (D6), override covers it.
         parts = (
             [part.strip() for part in rest.split("<~>") if part.strip()]
             if "<~>" in rest
@@ -190,7 +179,6 @@ __all__ = [
     "SKIP_FLAG",
     "DefinitionMissingError",
     "ensure_definition",
-    "has_definition",
     "refusal_message",
     "require_definition",
     "tag_systems",

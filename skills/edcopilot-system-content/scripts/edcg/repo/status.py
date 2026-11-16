@@ -36,6 +36,7 @@ from edcg.common.layout import (
     CUSTOM_FILE_NAME,
     PROVENANCE_RE,
     dossier_path,
+    has_definition,
     rules_path,
     slugify,
     systems_dir,
@@ -70,15 +71,11 @@ class SystemState:
     named: bool
     has_dossier: bool
     has_rules: bool
+    has_definition: bool
     definition_commits: int
     content_tags: int
     marked_tags: int
     content_problem: str | None
-
-    @property
-    def has_definition(self) -> bool:
-        """A definition is the dossier AND rules pair, the rule ``is_new`` uses."""
-        return self.has_dossier and self.has_rules
 
     @property
     def definition_saved(self) -> bool:
@@ -237,8 +234,11 @@ def _observe(
         name=name,
         slug=slug,
         named=named,
+        # The halves word the "incomplete" line; the rule itself is the shared
+        # layout predicate, so the checklist cannot disagree with the gate.
         has_dossier=dossier_path(config, name).is_file(),
         has_rules=rules_path(config, name).is_file(),
+        has_definition=has_definition(config, name),
         definition_commits=_definition_commits(config, slug),
         content_tags=len(tags),
         marked_tags=sum(1 for tag in tags if tag.marker_line is not None),
@@ -473,6 +473,17 @@ def _content_line(state: SystemState) -> str:
             "(SKILL.md Setup step 4)",
         )
     if not state.content_tags:
+        if not state.has_definition:
+            # The gated commands refuse without the pair (G2), so the pointer
+            # names the definition first rather than sending the reader into a
+            # refusal. The definition line above says what that step is.
+            return _box(
+                False,
+                f"content: no authored tag for {state.name} - after the "
+                "definition is saved, run edcg.py writing-brief-data, "
+                "validate-content and write-content "
+                "(references/writing-brief.md)",
+            )
         return _box(
             False,
             f"content: no authored tag for {state.name} - run edcg.py "

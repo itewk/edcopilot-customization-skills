@@ -60,6 +60,19 @@ def rules_path(config: Config, system_name: str) -> Path:
     return systems_dir(config) / f"{slugify(system_name)}.rules.toml"
 
 
+def has_definition(config: Config, system_name: str) -> bool:
+    """Whether the system's definition - the dossier AND rules pair - is saved.
+
+    The one home for the rule ``save_definition`` decides ``is_new`` by, that
+    ``status`` reports, and that the content commands refuse without: half a
+    pair is not a definition.
+    """
+    return (
+        dossier_path(config, system_name).is_file()
+        and rules_path(config, system_name).is_file()
+    )
+
+
 def content_root_state(root: Path) -> str:
     """Return ``"blank"`` or ``"existing"`` for a content root.
 

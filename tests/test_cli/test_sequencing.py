@@ -27,6 +27,7 @@ from edcg.repo.sequencing import (
     refusal_message,
     tag_systems,
 )
+from edcg.rules.validation import Kind
 
 NAME = "Test System"
 
@@ -169,6 +170,28 @@ def test_writing_brief_data_proceeds_when_the_human_allows_the_skip(
     assert NAME in captured.err
 
 
+@pytest.mark.parametrize("present", ["dossier", "rules"])
+def test_writing_brief_data_refuses_on_half_a_definition(
+    present, monkeypatch, tmp_path, capsys
+):
+    """A definition is the pair: either file alone must not open the gate."""
+    _environment(monkeypatch, tmp_path)
+    systems = tmp_path / "systems"
+    systems.mkdir()
+    if present == "dossier":
+        (systems / "test-system.md").write_text("# Test System\n", encoding="utf-8")
+    else:
+        (systems / "test-system.rules.toml").write_text(
+            '[system]\nnames = ["Test System"]\n', encoding="utf-8"
+        )
+
+    assert cli.main(["writing-brief-data", "--system", NAME]) == 1
+
+    error = _error(capsys)["error"]
+    for part in REFUSAL_PARTS:
+        assert part in error
+
+
 # ---------------------------------------------------------------------------
 # validate-content
 # ---------------------------------------------------------------------------
@@ -224,8 +247,7 @@ def test_write_content_refuses_without_a_definition(monkeypatch, tmp_path, capsy
 
     assert code == 1
     error = _error(capsys)["error"]
-    for part in REFUSAL_PARTS:
-        assert part in error
+    assert error == refusal_message(NAME)
     assert not (runtime / CUSTOM_FILE_NAME).exists()
 
 
@@ -325,6 +347,19 @@ def test_markdb_proceeds_when_the_human_allows_the_skip(
     assert _custom(runtime).splitlines()[:2] == [tag, "UPDATEDB"]
 
 
+def test_markdb_gates_the_json_payload_path(monkeypatch, tmp_path, capsys):
+    """The gate is not a flag-parsing side effect: stdin tags are gated too."""
+    tag = f"@SystemGreeting<~>{NAME}"
+    text = f"{tag}\nHello.\n"
+    runtime = _environment(monkeypatch, tmp_path, text)
+
+    assert _run(["markdb", "add"], stdin=_payload({"tags": [tag]})) == 1
+
+    error = _error(capsys)["error"]
+    assert f"no definition saved for {NAME}" in error
+    assert _custom(runtime) == text
+
+
 def test_markdb_with_a_defined_system_needs_no_override(
     monkeypatch, tmp_path, capsys
 ):
@@ -393,6 +428,13 @@ def test_tag_systems_derives_the_field_the_kind_declares():
     ) == ["Alpha", "Beta"]
 
 
+def test_tag_systems_reads_the_index_the_kind_declares():
+    """[kinds] owns the field order, so a reordered kind still derives right."""
+    kinds = {"OddKind": Kind(parts=("station", "system"))}
+
+    assert tag_systems(["@OddKind<~>Nowhere Station<~>Gamma"], kinds) == ["Gamma"]
+
+
 # ---------------------------------------------------------------------------
 # Help-as-interface-doc
 # ---------------------------------------------------------------------------
@@ -416,6 +458,13 @@ def test_the_gated_commands_document_the_override_flag(argv):
     assert "human has chosen to skip the definition prerequisite" in help_text
     # The examples still show the ordinary form: the flag is not the default.
     assert "--allow-no-definition" not in (parser.epilog or "")
+
+
+@pytest.mark.parametrize("argv", [["gather-facts"], ["audit"]], ids=lambda a: a[0])
+def test_probe_commands_gain_no_override(argv):
+    """D3's scope: probes never refuse, so they have nothing to override."""
+    help_text = _gated_parser(argv).format_help()
+    assert "--allow-no-definition" not in help_text
 
 
 def _gated_parser(argv):

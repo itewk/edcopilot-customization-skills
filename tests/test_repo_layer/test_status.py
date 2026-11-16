@@ -254,6 +254,20 @@ class TestContentState:
             "[ ] markers: nothing is authored yet, so there is no marker to set"
         ) in lines
 
+    def test_an_undefined_system_points_at_the_definition_first(
+        self, git_repo, runtime
+    ):
+        """The content pointer must not name a command the gate would refuse."""
+        root = git_repo(files={"README.md": "# empty\n"})
+
+        lines = _lines(root, NAME)
+
+        assert (
+            f"[ ] content: no authored tag for {NAME} - after the definition is "
+            "saved, run edcg.py writing-brief-data, validate-content and "
+            "write-content (references/writing-brief.md)"
+        ) in lines
+
 
 class TestMarkerState:
     """Markers are read from the parsed tags, never inferred."""
