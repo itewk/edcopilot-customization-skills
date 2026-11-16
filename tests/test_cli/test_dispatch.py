@@ -199,6 +199,7 @@ def test_validate_definition_prints_json_and_fails_on_errors(capsys):
 
 def test_validate_content_prints_json(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(tmp_path))
+    _write_system(tmp_path)
     payload = json.dumps(
         {"content": "@SystemGreeting<~>Test System\nHello.\n", "system_name": "Test System"}
     )
@@ -324,9 +325,12 @@ def test_writing_brief_data_resolves_station_bounds_overrides(
 def test_writing_brief_data_fails_cleanly_for_an_unknown_system(
     monkeypatch, tmp_path, capsys
 ):
+    """An undefined system is refused by the definition prerequisite (G2)."""
     monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(tmp_path))
     assert cli.main(["writing-brief-data", "--system", "Missing"]) == 1
-    assert "not found" in json.loads(capsys.readouterr().out)["error"]
+    error = json.loads(capsys.readouterr().out)["error"]
+    assert "no definition saved for Missing" in error
+    assert "--allow-no-definition" in error
 
 
 def test_update_scan_emits_per_system_deltas(monkeypatch, tmp_path, capsys):
@@ -412,6 +416,7 @@ def test_markdb_add_marks_the_tag(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(tmp_path))
     monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(runtime))
     monkeypatch.setenv("EDCG_AUTO_COMMIT", "false")
+    _write_system(tmp_path)
 
     assert cli.main(["markdb", "add", "--tag", tag]) == 0
     data = json.loads(capsys.readouterr().out)
@@ -434,6 +439,7 @@ def test_markdb_add_warns_on_a_tag_that_matched_nothing(
     monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(tmp_path))
     monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(runtime))
     monkeypatch.setenv("EDCG_AUTO_COMMIT", "false")
+    _write_system(tmp_path)
 
     assert cli.main(["markdb", "add", "--tag", tag, "--tag", typo]) == 0
     captured = capsys.readouterr()
@@ -458,6 +464,7 @@ def test_markdb_remove_warns_on_a_tag_that_matched_nothing(
     monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(tmp_path))
     monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(runtime))
     monkeypatch.setenv("EDCG_AUTO_COMMIT", "false")
+    _write_system(tmp_path)
 
     assert cli.main(["markdb", "remove", "--tag", tag, "--tag", typo]) == 0
     captured = capsys.readouterr()
@@ -511,6 +518,7 @@ def test_rewrite_tag_replaces_a_line(monkeypatch, tmp_path, capsys):
     )
     monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(tmp_path))
     monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(runtime))
+    _write_system(tmp_path)
 
     payload = json.dumps(
         {"system_name": "Test System", "tag": tag, "replace": {"Hello.": "Hi."}}

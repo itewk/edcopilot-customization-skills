@@ -44,6 +44,7 @@ from edcg.repo.brief import build_update_scan, system_names, writing_brief_data
 from edcg.repo.dossier import save_definition
 from edcg.repo.gitrepo import GitRepo
 from edcg.repo.logs import check_logs, scope_failures
+from edcg.repo.sequencing import ensure_definition, tag_systems
 from edcg.repo.status import build_status, build_unreadable_status
 from edcg.rules.validation import validate_content, validate_definition
 
@@ -175,6 +176,12 @@ PAYLOAD_SPECS: dict[str, dict[str, type | tuple[type, bool]]] = {
         "add": (list, False),
     },
 }
+
+# The definition gate's override, documented identically on every gated command
+# (B6). One string so no command's help can drift from its siblings'.
+ALLOW_NO_DEFINITION_HELP = (
+    "Pass when the human has chosen to skip the definition prerequisite"
+)
 
 
 def _resolve_input_path(raw: str) -> Path:
@@ -618,6 +625,9 @@ def command_gather_facts(args: argparse.Namespace) -> int:
 
 def command_writing_brief_data(args: argparse.Namespace) -> int:
     config = get_config()
+    ensure_definition(
+        config, args.system, allow_missing=args.allow_no_definition
+    )
     _emit(writing_brief_data(config, args.system))
     return 0
 
@@ -707,6 +717,13 @@ def command_save_definition(args: argparse.Namespace) -> int:
 def command_validate_content(args: argparse.Namespace) -> int:
     data = _payload()
     _require_fields(data, PAYLOAD_SPECS["validate-content"])
+    # After payload validation, before the rules run: a refused command must
+    # not report a verdict on work the repository does not define yet.
+    ensure_definition(
+        get_config(),
+        data["system_name"],
+        allow_missing=args.allow_no_definition,
+    )
     result = validate_content(
         content=data["content"],
         system_name=data["system_name"],
@@ -718,6 +735,11 @@ def command_validate_content(args: argparse.Namespace) -> int:
 def command_write_content(args: argparse.Namespace) -> int:
     data = _payload()
     _require_fields(data, PAYLOAD_SPECS["write-content"])
+    ensure_definition(
+        get_config(),
+        data["system_name"],
+        allow_missing=args.allow_no_definition,
+    )
     result = write_content(
         system_name=data["system_name"],
         content_block=data.get("content_block", ""),
@@ -736,6 +758,11 @@ def command_get_content(args: argparse.Namespace) -> int:
 def command_rewrite_tag(args: argparse.Namespace) -> int:
     data = _payload()
     _require_fields(data, PAYLOAD_SPECS["rewrite-tag"])
+    ensure_definition(
+        get_config(),
+        data["system_name"],
+        allow_missing=args.allow_no_definition,
+    )
     result = rewrite_tag(
         system_name=data["system_name"],
         tag=data["tag"],
@@ -786,6 +813,16 @@ def command_markdb(args: argparse.Namespace) -> int:
         return _fail(
             f"custom file not found: {resolved.path / CUSTOM_FILE_NAME} "
             f"(EDCoPilot root: {resolved.path})"
+        )
+
+    # The definition gate follows the custom-file probe: a call with no file to
+    # mark cannot run, and naming the file is the more immediate diagnosis.
+    # markdb carries no system field, so every system its tags name must be
+    # defined; a kind that declares no system part is exempt (D6).
+    config = get_config()
+    for system in tag_systems(tags):
+        ensure_definition(
+            config, system, allow_missing=args.allow_no_definition
         )
 
     if args.markdb_command == "add":
@@ -1095,6 +1132,11 @@ from the payload or from its file flag, never both.""",
         "writing-brief-data", help="Computed writing-brief data as JSON"
     )
     brief_parser.add_argument("--system", required=True, help="System name")
+    brief_parser.add_argument(
+        "--allow-no-definition",
+        action="store_true",
+        help=ALLOW_NO_DEFINITION_HELP,
+    )
     brief_parser.set_defaults(func=command_writing_brief_data)
 
     content_validate_parser = subparsers.add_parser(
@@ -1109,6 +1151,11 @@ Where content.json is:
   "content": "Hello world."
 }""",
     )
+    content_validate_parser.add_argument(
+        "--allow-no-definition",
+        action="store_true",
+        help=ALLOW_NO_DEFINITION_HELP,
+    )
     content_validate_parser.set_defaults(func=command_validate_content)
     write_parser = subparsers.add_parser(
         "write-content", help="Append a content block (JSON on stdin)",
@@ -1122,6 +1169,11 @@ Where content.json is:
   "system_name": "Test System",
   "commit_co_author": "<harness> (<models>) <email>"
 }""",
+    )
+    write_parser.add_argument(
+        "--allow-no-definition",
+        action="store_true",
+        help=ALLOW_NO_DEFINITION_HELP,
     )
     write_parser.set_defaults(func=command_write_content)
 
@@ -1149,6 +1201,11 @@ Where payload.json is:
     "Hello world.": "Hi there!"
   }
 }""",
+    )
+    rewrite_parser.add_argument(
+        "--allow-no-definition",
+        action="store_true",
+        help=ALLOW_NO_DEFINITION_HELP,
     )
     rewrite_parser.set_defaults(func=command_rewrite_tag)
 
@@ -1189,6 +1246,11 @@ Or pass the tags as JSON on stdin:
             action="append",
             default=[],
             help="Exact tag line (repeatable; otherwise JSON on stdin)",
+        )
+        action_parser.add_argument(
+            "--allow-no-definition",
+            action="store_true",
+            help=ALLOW_NO_DEFINITION_HELP,
         )
         action_parser.set_defaults(func=command_markdb)
 

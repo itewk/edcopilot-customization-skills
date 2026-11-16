@@ -114,6 +114,14 @@ def test_write_content_content_block_may_be_absent(
     monkeypatch.setenv("EDCG_CONTENT_DEFINITIONS_ROOT", str(tmp_path))
     monkeypatch.setenv("EDCG_EDCOPILOT_ROOT", str(runtime))
     monkeypatch.setenv("EDCG_AUTO_COMMIT", "false")
+    # The definition gate is satisfied, so this test keeps judging the payload
+    # rule it was written for rather than the prerequisite.
+    systems = tmp_path / "systems"
+    systems.mkdir()
+    (systems / "s.md").write_text("# S\n", encoding="utf-8")
+    (systems / "s.rules.toml").write_text(
+        '[system]\nnames = ["S"]\ndossier = "s.md"\n', encoding="utf-8"
+    )
     payload = {"system_name": "S"}
     with patch("sys.stdin", io.StringIO(json.dumps(payload))):
         code = cli.main(["write-content"])
